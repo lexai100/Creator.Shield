@@ -9,12 +9,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 from backend.config import Settings
+from backend.services.llm_client import invoke_with_fallback
 from backend.models.schemas import (
     DocumentGenerationRequest,
     LoopholeReport,
@@ -140,30 +141,18 @@ class DocumentCraftAgent:
     """
 
     def __init__(self, config: Settings, rag_service: Optional[RAGService] = None) -> None:
-        self.llm = ChatOpenAI(
-            model=config.DOCUMENT_CRAFT_MODEL,
-            base_url=config.GROQ_BASE_URL,
-            api_key=config.GROQ_API_KEY,
-            temperature=0.3,
-            max_tokens=4096,
-        )
         self.rag = rag_service
         self._config = config
 
     async def _invoke_with_retry(self, messages: list, max_retries: int = 3):
-        """Invoke LLM with exponential backoff on 429 rate limit errors."""
-        for attempt in range(max_retries):
-            try:
-                return await self.llm.ainvoke(messages)
-            except Exception as e:
-                err = str(e)
-                if ("429" in err or "rate" in err.lower() or "too many" in err.lower()) and attempt < max_retries - 1:
-                    wait = (2 ** attempt) * 10  # 10s, 20s, 40s
-                    logger.warning(f"Rate limited (429). Retrying in {wait}s (attempt {attempt + 1}/{max_retries})")
-                    await asyncio.sleep(wait)
-                else:
-                    raise
-        raise RuntimeError("Max retries exceeded due to rate limiting")
+        """Invoke LLM with automatic Groq → Gemini fallback on rate limits."""
+        return await invoke_with_fallback(
+            messages,
+            self._config,
+            temperature=0.3,
+            max_tokens=4096,
+            groq_model=self._config.DOCUMENT_CRAFT_MODEL,
+        )
 
     # ── Analysis ──────────────────────────────────────────────────────────
 
@@ -282,7 +271,6 @@ class DocumentCraftAgent:
                 continue
             issues_text += f"{i}. {name} (Clause: {clause})\n   Requested change: {fix}\n\n"
 
-        fast_llm = self._get_fast_llm()
         prompt = f"""You are a professional negotiation coach helping an Indian content creator respond to a brand collaboration contract.
 
 TONE INSTRUCTION: {tone_instructions.get(tone, tone_instructions['collaborative'])}
@@ -307,7 +295,7 @@ Return VALID JSON:
             SystemMessage(content="You are an expert negotiation coach. Output VALID JSON only."),
             HumanMessage(content=prompt),
         ]
-        response = await fast_llm.ainvoke(messages)
+        response = await self._invoke_fast(messages)
         try:
             content = response.content.strip()
             if content.startswith("```"):
@@ -342,7 +330,7 @@ Return VALID JSON:
                 continue
             issues_text += f"{i}. [{name}]: {explanation}\n\n"
 
-        fast_llm = self._get_fast_llm()
+        # using _invoke_fast for plain-English translation
         prompt = f"""You are a plain-English translator helping Indian content creators understand their contract risks.
 
 For each legal explanation below, rewrite it in simple, everyday language that a 22-year-old with no legal background would understand.
@@ -361,7 +349,7 @@ Return VALID JSON array:
             SystemMessage(content="You are a plain-language expert. Output VALID JSON only."),
             HumanMessage(content=prompt),
         ]
-        response = await fast_llm.ainvoke(messages)
+        response = await self._invoke_fast(messages)
         try:
             content = response.content.strip()
             if content.startswith("```"):
@@ -377,7 +365,7 @@ Return VALID JSON array:
         Extract usage rights analysis from a creator contract.
         Returns structured UsageRightsAnalysis-compatible dict.
         """
-        fast_llm = self._get_fast_llm()
+        # using _invoke_fast for usage-rights analysis
         prompt = f"""You are a legal analyst specialising in influencer contract IP rights.
 
 Analyse the following contract and extract ALL content usage rights granted to the brand.
@@ -408,7 +396,7 @@ Return VALID JSON:
             SystemMessage(content="You are a legal IP rights analyst. Output VALID JSON only."),
             HumanMessage(content=prompt),
         ]
-        response = await fast_llm.ainvoke(messages)
+        response = await self._invoke_fast(messages)
         try:
             content = response.content.strip()
             if content.startswith("```"):
@@ -428,14 +416,14 @@ Return VALID JSON:
                 "usage_summary": response.content[:500],
             }
 
-    def _get_fast_llm(self) -> ChatOpenAI:
-        """Return the fast/cheap LLM instance for utility tasks."""
-        return ChatOpenAI(
-            model=self._config.FAST_MODEL,
-            base_url=self._config.GROQ_BASE_URL,
-            api_key=self._config.GROQ_API_KEY,
+    async def _invoke_fast(self, messages: list) -> Any:
+        """Invoke the fast/cheap model with fallback support."""
+        return await invoke_with_fallback(
+            messages,
+            self._config,
             temperature=0.3,
             max_tokens=2048,
+            groq_model=self._config.FAST_MODEL,
         )
     # ── Patching ──────────────────────────────────────────────────────────
 

@@ -13,6 +13,7 @@ from typing import Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from backend.services.llm_client import invoke_with_fallback
 
 from backend.config import Settings
 from backend.models.schemas import (
@@ -112,13 +113,6 @@ class BusinessSetupAgent:
     """
 
     def __init__(self, config: Settings, rag_service: Optional[RAGService] = None) -> None:
-        self.llm = ChatOpenAI(
-            model=config.FAST_MODEL,
-            base_url=config.GROQ_BASE_URL,
-            api_key=config.GROQ_API_KEY,
-            temperature=0.5,
-            max_tokens=2048,
-        )
         self.rag = rag_service
         self._config = config
 
@@ -128,40 +122,25 @@ class BusinessSetupAgent:
         conversation_history: list[BusinessSetupMessage],
         session_id: str,
     ) -> BusinessSetupResponse:
-        """
-        Process one turn of the business setup conversation.
-        Returns a BusinessSetupResponse with reply, is_final flag, and optional checklist.
-        """
-        # Retrieve relevant knowledge from the business_licenses RAG
+        """Process one turn of the business setup conversation."""
         rag_context = ""
         if self.rag:
-            knowledge = self.rag.search_business_knowledge(
-                query=user_message,
-                n_results=4,
-            )
+            knowledge = self.rag.search_business_knowledge(query=user_message, n_results=4)
             if knowledge:
-                rag_context = "\n\n## Relevant Knowledge Base Entries:\n" + "\n\n".join(
-                    [k["text"] for k in knowledge]
-                )
+                rag_context = "\n\n## Relevant Knowledge Base Entries:\n" + "\n\n".join([k["text"] for k in knowledge])
 
-        # Build the full message history for the LLM
         system_content = BUSINESS_SETUP_SYSTEM_PROMPT
         if rag_context:
             system_content += f"\n\n{rag_context}"
 
         messages = [SystemMessage(content=system_content)]
-
-        # Add conversation history
-        for msg in conversation_history[-10:]:  # Keep last 10 turns for context
+        for msg in conversation_history[-10:]:
             if msg.role == "user":
                 messages.append(HumanMessage(content=msg.content))
             elif msg.role == "assistant":
                 messages.append(AIMessage(content=msg.content))
-
-        # Add current user message
         messages.append(HumanMessage(content=user_message))
 
-        # Invoke LLM with retry
         try:
             response = await self._invoke_with_retry(messages)
             return self._parse_response(response.content, session_id)
@@ -169,33 +148,21 @@ class BusinessSetupAgent:
             logger.error("BusinessSetupAgent error: %s", exc)
             return BusinessSetupResponse(
                 session_id=session_id,
-                reply=(
-                    "I'm sorry, I ran into a technical issue. Let's try again — "
-                    "can you tell me a bit about your creator business?"
-                ),
+                reply="I ran into a technical issue. Can you tell me a bit about your creator business?",
                 is_final=False,
                 checklist=None,
                 progress_percent=0,
             )
 
     async def _invoke_with_retry(self, messages: list, max_retries: int = 3):
-        """Invoke LLM with exponential backoff."""
-        import asyncio
-        for attempt in range(max_retries):
-            try:
-                return await self.llm.ainvoke(messages)
-            except Exception as e:
-                err = str(e)
-                if (
-                    ("429" in err or "rate" in err.lower() or "too many" in err.lower())
-                    and attempt < max_retries - 1
-                ):
-                    wait = (2 ** attempt) * 5
-                    logger.warning(f"Rate limited. Retrying in {wait}s (attempt {attempt + 1})")
-                    await asyncio.sleep(wait)
-                else:
-                    raise
-        raise RuntimeError("Max retries exceeded")
+        """Invoke LLM with automatic Groq → Gemini fallback on rate limits."""
+        return await invoke_with_fallback(
+            messages,
+            self._config,
+            temperature=0.5,
+            max_tokens=2048,
+            groq_model=self._config.FAST_MODEL,
+        )
 
     def _parse_response(self, raw: str, session_id: str) -> BusinessSetupResponse:
         """Parse the LLM's JSON response into a BusinessSetupResponse."""

@@ -1,1182 +1,349 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import {
-  analyzeDocument,
-  generateDocument,
-  connectWebSocket,
-  getTemplates,
-  downloadDocument,
-  searchKanoonForType,
-  type AnalysisResult,
-  type AdversarialRound,
-  type WSMessage,
-  type TemplateInfo,
-  type Vulnerability,
-  type KanoonResult,
-} from "@/lib/api";
-import VoiceInterface from "@/components/VoiceInterface";
-import ComplianceRadar from "@/components/ComplianceRadar";
-import LoopholeNetwork from "@/components/LoopholeNetwork";
-import BusinessSetupChat from "@/components/BusinessSetupChat";
-import NegotiateTab from "@/components/NegotiateTab";
-import { generatePDF } from "@/lib/generatePDF";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 
-// ── Icons (inline SVG to avoid deps) ────────────────────────────────────
+// ── Sliding sample questions ─────────────────────────────────────────────────
 
-function ShieldIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  );
-}
+const SAMPLE_QUESTIONS = [
+  "Can I legally call out a brand that scammed me without getting sued?",
+  "Is my brand deal contract safe to sign?",
+  "A brand wants 12 months of exclusivity — is that normal?",
+  "How do I make sure a brand can't use my content forever for free?",
+  "What happens if a brand doesn't pay me after I deliver the content?",
+  "Can I review a brand's product negatively without legal trouble?",
+];
 
-function SwordIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
-      <line x1="13" y1="19" x2="19" y2="13" />
-      <line x1="16" y1="16" x2="20" y2="20" />
-      <line x1="19" y1="21" x2="21" y2="19" />
-    </svg>
-  );
-}
+const FEATURES = [
+  {
+    icon: "🛡️",
+    title: "Check My Contract",
+    desc: "Upload any brand deal, collaboration, or service contract. Our AI finds every loophole and rewrites the risky clauses.",
+    color: "rgba(74,222,128,0.08)",
+    border: "rgba(74,222,128,0.2)",
+  },
+  {
+    icon: "✍️",
+    title: "Write a Contract",
+    desc: "Describe what you need in plain language — get a formal, legally-sound contract in seconds. No lawyer needed.",
+    color: "rgba(96,165,250,0.08)",
+    border: "rgba(96,165,250,0.2)",
+  },
+  {
+    icon: "🏢",
+    title: "Set Up My Business",
+    desc: "An AI guide walks you through every licence, registration, and legal step to properly set up your creator business in India.",
+    color: "rgba(212,130,26,0.08)",
+    border: "rgba(212,130,26,0.2)",
+  },
+  {
+    icon: "📧",
+    title: "Negotiate with Brands",
+    desc: "Got a bad contract? Pick a tone — gentle, collaborative, or firm — and the AI writes the perfect negotiation email for you.",
+    color: "rgba(251,191,36,0.08)",
+    border: "rgba(251,191,36,0.2)",
+  },
+];
 
-function UploadIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
-    </svg>
-  );
-}
+const HOW_IT_WORKS = [
+  { step: "01", icon: "📤", title: "Share Your Contract", desc: "Upload a PDF, paste the text, or just describe your situation in plain English." },
+  { step: "02", icon: "🤖", title: "AI Checks Every Clause", desc: "Two AI agents work together — one finds every risk and loophole, the other fixes them." },
+  { step: "03", icon: "✅", title: "Get Clear Answers", desc: "Receive a plain-English breakdown, a fixed contract, relevant case law, and a ready-to-send negotiation email." },
+];
 
-function SparkleIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2z" />
-    </svg>
-  );
-}
+// ── Main landing page ────────────────────────────────────────────────────────
 
-function FileIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-    </svg>
-  );
-}
+export default function LandingPage() {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [sampleIdx, setSampleIdx] = useState(0);
+  const [visible, setVisible] = useState<Set<string>>(new Set());
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-function DownloadIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  );
-}
-
-// ── Severity color helper ───────────────────────────────────────────────
-
-function getSeverityClass(severity: string): string {
-  switch (severity) {
-    case "CRITICAL": return "severity-critical";
-    case "HIGH": return "severity-high";
-    case "MEDIUM": return "severity-medium";
-    case "LOW": return "severity-low";
-    default: return "severity-medium";
-  }
-}
-
-function getScoreColor(score: number): string {
-  if (score >= 70) return "#ef4444";
-  if (score >= 40) return "#f59e0b";
-  return "#22c55e";
-}
-
-// ── Main Page Component ─────────────────────────────────────────────────
-
-export default function Home() {
-  // Mode
-  const [mode, setMode] = useState<"analyze" | "generate" | "business">("analyze");
-
-  // Analyze state
-  const [file, setFile] = useState<File | null>(null);
-  const [textInput, setTextInput] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
-
-  // Generate state
-  const [templates, setTemplates] = useState<TemplateInfo[]>([]);
-  const [selectedType, setSelectedType] = useState("RENT_AGREEMENT");
-  const [description, setDescription] = useState("");
-  const [partyA, setPartyA] = useState("");
-  const [partyB, setPartyB] = useState("");
-  const [location, setLocation] = useState("");
-
-  // Processing state
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [currentRound, setCurrentRound] = useState(0);
-  const [rounds, setRounds] = useState<AdversarialRound[]>([]);
-  const [statusText, setStatusText] = useState("");
-
-  // Results
-  const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [activeResultTab, setActiveResultTab] = useState<"overview" | "vulns" | "document" | "rounds" | "caselaw" | "negotiate">("overview");
-
-  // Negotiation email is handled by NegotiateTab component
-
-  // Case law
-  const [kanoonResults, setKanoonResults] = useState<KanoonResult[]>([]);
-  const [kanoonLoading, setKanoonLoading] = useState(false);
-  const [kanoonCourt, setKanoonCourt] = useState("");
-
-  // Voice readback text (speaks the summary after analysis)
-  const [ttsText, setTtsText] = useState<string | undefined>(undefined);
-
-  // Refs
-  const wsRef = useRef<WebSocket | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Load templates on mount
+  // Cycle sample questions every 3s
   useEffect(() => {
-    getTemplates()
-      .then(setTemplates)
-      .catch(() => {});
+    const t = setInterval(() => setSampleIdx(i => (i + 1) % SAMPLE_QUESTIONS.length), 3000);
+    return () => clearInterval(t);
   }, []);
 
-  // ── WebSocket handler ───────────────────────────────────────────────
-
-  const handleWSMessage = useCallback((msg: WSMessage) => {
-    switch (msg.type) {
-      case "round_update":
-        setProgress(msg.progress);
-        setCurrentRound(msg.round.round_number);
-        setRounds((prev) => [...prev, msg.round]);
-        setStatusText(
-          `Round ${msg.round.round_number}: Found ${msg.round.vulnerabilities_found} vulnerabilities (Score: ${msg.round.score})`
-        );
-        break;
-      case "completed":
-        setResult(msg.result);
-        setIsProcessing(false);
-        setProgress(100);
-        setStatusText("Analysis complete!");
-        // Speak a brief summary aloud
-        setTtsText(
-          `Analysis complete. Final risk score: ${msg.result.risk_score} out of 100. ` +
-          (msg.result.risk_score < 15
-            ? "The document meets the safety threshold."
-            : msg.result.risk_score < 40
-            ? "Minor issues were found. Review the vulnerabilities."
-            : "Significant vulnerabilities remain. Legal review is recommended.")
-        );
-        // Auto-fetch case law
-        fetchCaseLaw("legal document");
-        break;
-      case "error":
-        const rawErr: string = msg.error ?? "Unknown error";
-        // Humanize common API errors
-        const friendlyErr = rawErr.includes("429") || rawErr.toLowerCase().includes("too many requests")
-          ? "⚡ The AI API is rate-limited (too many simultaneous requests). The system will auto-retry — please wait 30–60 seconds and try again."
-          : rawErr.includes("timeout") || rawErr.includes("timed out")
-          ? "⏱️ The analysis timed out. The document may be too long — try a shorter excerpt."
-          : rawErr.length > 200
-          ? rawErr.slice(0, 200) + "…"
-          : rawErr;
-        setError(friendlyErr);
-        setIsProcessing(false);
-        setStatusText("Error occurred");
-        break;
-    }
+  // Scroll reveal
+  useEffect(() => {
+    const obs = new IntersectionObserver(
+      entries => {
+        entries.forEach(e => { if (e.isIntersecting) setVisible(prev => new Set([...prev, e.target.id])); });
+      },
+      { threshold: 0.15 }
+    );
+    document.querySelectorAll("[data-reveal]").forEach(el => obs.observe(el));
+    return () => obs.disconnect();
   }, []);
 
-  // ── Voice transcript handler ────────────────────────────────────────
-
-  const handleVoiceTranscript = useCallback(
-    (text: string) => {
-      if (mode === "analyze") {
-        setTextInput((prev) => (prev ? `${prev}\n${text}` : text));
-      } else {
-        setDescription((prev) => (prev ? `${prev} ${text}` : text));
-      }
-    },
-    [mode]
-  );
-
-  // ── Case law fetch ──────────────────────────────────────────────────
-
-  const fetchCaseLaw = useCallback(
-    async (documentType: string, court: string = kanoonCourt) => {
-      setKanoonLoading(true);
-      try {
-        const res = await searchKanoonForType(
-          documentType.toLowerCase(),
-          court,
-        );
-        setKanoonResults(res.results);
-      } catch {
-        setKanoonResults([]);
-      } finally {
-        setKanoonLoading(false);
-      }
-    },
-    [kanoonCourt]
-  );
-
-  // ── Submit handlers ─────────────────────────────────────────────────
-
-  const handleAnalyze = async () => {
-    if (!file && !textInput.trim()) return;
-
-    setIsProcessing(true);
-    setProgress(0);
-    setCurrentRound(0);
-    setRounds([]);
-    setResult(null);
-    setError(null);
-    setStatusText("Starting adversarial analysis...");
-
-    try {
-      const { task_id } = await analyzeDocument(file || undefined, textInput || undefined);
-      wsRef.current = connectWebSocket(task_id, handleWSMessage, () => {
-        setError("Connection lost. Please try again.");
-        setIsProcessing(false);
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start analysis");
-      setIsProcessing(false);
-    }
-  };
-
-  const handleGenerate = async () => {
-    if (!description.trim()) return;
-
-    setIsProcessing(true);
-    setProgress(0);
-    setCurrentRound(0);
-    setRounds([]);
-    setResult(null);
-    setError(null);
-    setStatusText("Generating document...");
-
-    try {
-      const { task_id } = await generateDocument({
-        document_type: selectedType,
-        description,
-        party_a: partyA || undefined,
-        party_b: partyB || undefined,
-        location: location || undefined,
-        run_adversarial: true,
-      });
-      wsRef.current = connectWebSocket(task_id, handleWSMessage, () => {
-        setError("Connection lost. Please try again.");
-        setIsProcessing(false);
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start generation");
-      setIsProcessing(false);
-    }
-  };
-
-  // ── File drop handlers ──────────────────────────────────────────────
-
-  const handleDrop = (e: React.DragEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsDragging(false);
-    const f = e.dataTransfer.files[0];
-    if (f) setFile(f);
+    if (query.trim()) router.push(`/chat?q=${encodeURIComponent(query.trim())}`);
   };
 
-  const handleDownload = async () => {
-    if (!result?.task_id) return;
-    try {
-      const text = await downloadDocument(result.task_id);
-      const blob = new Blob([text], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `lexai_hardened_${result.task_id.slice(0, 8)}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {}
+  const handleSampleClick = (q: string) => {
+    router.push(`/chat?q=${encodeURIComponent(q)}`);
   };
-
-  // ── Render ────────────────────────────────────────────────────────────
 
   return (
-    <main className="min-h-screen relative">
-      {/* Animated warm background */}
-      <div className="lexai-gradient-bg" />
-
-      {/* ── Navbar ────────────────────────────────────────────────── */}
-      <nav className="cs-navbar flex items-center justify-between px-8 py-4">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <ShieldIcon className="w-8 h-8 text-[var(--color-lexai-accent)]" />
-            <SwordIcon className="w-4 h-4 absolute -bottom-1 -right-1 text-[var(--color-lexai-accent-glow)]" />
-          </div>
-          <div>
-            <h1 style={{ fontFamily: "var(--font-heading)", fontSize: "1.35rem", fontWeight: 900, letterSpacing: "-0.01em", margin: 0 }}>
-              Creator<span style={{ color: "var(--color-lexai-accent)" }}>Shield</span>
-            </h1>
-            <p style={{ fontSize: "0.72rem", color: "var(--color-lexai-text-muted)", margin: 0 }}>
-              AI Contract Protection &amp; Business Setup for Creators
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1.5" style={{ fontSize: "0.75rem", color: "var(--color-lexai-success)" }}>
-            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--color-lexai-success)" }} />
-            AI Ready
+    <div style={{ minHeight: "100vh", fontFamily: "var(--font-body)" }}>
+      {/* ── Navbar ── */}
+      <nav style={{
+        position: "sticky", top: 0, zIndex: 100,
+        background: "rgba(13,11,8,0.85)", backdropFilter: "blur(12px)",
+        borderBottom: "1px solid var(--color-lexai-border)",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 48px", height: 64,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => router.push("/")}>
+          <span style={{ fontSize: "1.5rem" }}>🛡️</span>
+          <span style={{ fontFamily: "var(--font-heading)", fontSize: "1.3rem", fontWeight: 900 }}>
+            Creator<span style={{ color: "var(--color-lexai-accent)" }}>Shield</span>
           </span>
+          <span style={{ fontSize: "0.65rem", color: "var(--color-lexai-text-muted)", marginLeft: 4, letterSpacing: "0.08em", textTransform: "uppercase", paddingTop: 2 }}>
+            for Creators
+          </span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 32, fontSize: "0.85rem" }}>
+          <a href="#features" style={{ color: "var(--color-lexai-text-muted)", textDecoration: "none" }}>Features</a>
+          <a href="#how-it-works" style={{ color: "var(--color-lexai-text-muted)", textDecoration: "none" }}>How it works</a>
+          <button onClick={() => router.push("/dashboard")} className="btn-primary" style={{ padding: "8px 20px", fontSize: "0.85rem" }}>
+            Open App →
+          </button>
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-6 py-10">
-        {/* ── Mode Tabs ─────────────────────────────────────────────── */}
-        {!isProcessing && !result && (
-          <>
-            <div className="text-center mb-10">
-              <h2 className="cs-hero-title mb-4">
-                Protect Your Creator Business
-              </h2>
-              <p className="cs-hero-subtitle mx-auto">
-                Two AI agents work together — one finds every loophole, one fixes them —
-                so your contracts are airtight before you sign.
-              </p>
-            </div>
+      {/* ── Hero ── */}
+      <section style={{ textAlign: "center", padding: "72px 24px 80px", position: "relative" }}>
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 14px",
+          borderRadius: 20, border: "1px solid rgba(212,130,26,0.3)",
+          background: "rgba(212,130,26,0.08)", marginBottom: 24,
+          fontSize: "0.75rem", color: "var(--color-lexai-accent)", fontWeight: 700, letterSpacing: "0.06em",
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--color-lexai-accent)", animation: "pulse 2s infinite", display: "inline-block" }} />
+          AI Legal Protection for Indian Creators
+        </div>
 
-          <div className="flex justify-center gap-3 mb-8 flex-wrap">
-              <button
-                onClick={() => setMode("analyze")}
-                className={`cs-mode-tab ${mode === "analyze" ? "active" : ""}`}
-              >
-                <UploadIcon className="w-4 h-4" />
-                🛡️ Check My Contract
-              </button>
-              <button
-                onClick={() => setMode("generate")}
-                className={`cs-mode-tab ${mode === "generate" ? "active" : ""}`}
-              >
-                <SparkleIcon className="w-4 h-4" />
-                ✍️ Write a Contract
-              </button>
-              <button
-                onClick={() => setMode("business")}
-                className={`cs-mode-tab ${mode === "business" ? "active" : ""}`}
-              >
-                🏢 Set Up My Business
-              </button>
-            </div>
+        <h1 style={{
+          fontFamily: "var(--font-heading)", fontSize: "clamp(2rem, 6vw, 3.8rem)",
+          fontWeight: 900, lineHeight: 1.15, marginBottom: 20, letterSpacing: "-0.02em",
+        }}>
+          Protect Your Creator Business<br />
+          <span style={{
+            background: "linear-gradient(135deg, var(--color-lexai-accent), var(--color-lexai-accent-glow))",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          }}>Without a Lawyer</span>
+        </h1>
 
-            {/* ── Analyze Mode ─────────────────────────────────────── */}
-            {mode === "analyze" && (
-              <div className="glass-card p-8">
-                <div
-                  className={`drop-zone mb-6 ${isDragging ? "active" : ""}`}
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.txt,.doc,.docx"
-                    className="hidden"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  />
-                  <UploadIcon className="w-12 h-12 text-[var(--color-lexai-accent)] mx-auto mb-4" />
-                  {file ? (
-                    <div>
-                      <p className="text-lg font-semibold">{file.name}</p>
-                      <p className="text-sm text-[var(--color-lexai-text-muted)]">
-                        {(file.size / 1024).toFixed(1)} KB
-                      </p>
-                    </div>
-                  ) : (
-                    <div>
-                      <p className="text-lg font-semibold mb-1">
-                        Drop your document here
-                      </p>
-                      <p className="text-sm text-[var(--color-lexai-text-muted)]">
-                        PDF, TXT, or DOCX — or click to browse
-                      </p>
-                    </div>
-                  )}
-                </div>
+        <p style={{
+          fontSize: "clamp(0.95rem, 2vw, 1.15rem)", color: "var(--color-lexai-text-muted)",
+          maxWidth: 560, margin: "0 auto 20px", lineHeight: 1.75,
+        }}>
+          Got a risky brand deal? Not sure if you can legally call out a scam brand? 
+          CreatorShield gives you clear answers — fast, private, and in plain English.
+        </p>
 
-                <div className="relative mb-6">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-[var(--color-lexai-border)]" />
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="bg-[var(--color-lexai-surface)] px-4 text-sm text-[var(--color-lexai-text-muted)]">
-                      or paste text
-                    </span>
-                  </div>
-                </div>
+        {/* Feature pills */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", marginBottom: 40 }}>
+          {["📄 Check Contracts", "⚖️ Indian Law", "🔒 Private", "🆓 Free to Use"].map(f => (
+            <span key={f} style={{ padding: "6px 14px", borderRadius: 20, border: "1px solid var(--color-lexai-border)", background: "var(--color-lexai-surface-2)", fontSize: "0.78rem", color: "var(--color-lexai-text-muted)" }}>
+              {f}
+            </span>
+          ))}
+        </div>
 
-                <textarea
-                  className="lexai-textarea mb-4"
-                  placeholder="Paste your legal document text here..."
-                  value={textInput}
-                  onChange={(e) => setTextInput(e.target.value)}
-                  rows={8}
-                />
-
-                {/* Voice input for analyze mode */}
-                <div className="mb-6">
-                  <p className="text-xs text-[var(--color-lexai-text-muted)] uppercase tracking-wider mb-2">🎙️ Or speak your document / query</p>
-                  <VoiceInterface
-                    onTranscript={handleVoiceTranscript}
-                    textToSpeak={ttsText}
-                    placeholder="Speak your document text or describe what you need…"
-                  />
-                </div>
-
+        {/* ── Chatbot widget ── */}
+        <div style={{
+          maxWidth: 640, margin: "0 auto",
+          background: "var(--color-lexai-surface)",
+          border: "1px solid var(--color-lexai-border)",
+          borderRadius: 24,
+          overflow: "hidden",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
+        }}>
+          {/* Widget header */}
+          <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--color-lexai-border)" }}>
+            <p style={{ fontWeight: 700, fontSize: "1rem", marginBottom: 14, textAlign: "center" }}>
+              Hi! How can I help you today?
+            </p>
+            {/* Cycling sample chips */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+              {[SAMPLE_QUESTIONS[sampleIdx], SAMPLE_QUESTIONS[(sampleIdx + 1) % SAMPLE_QUESTIONS.length], SAMPLE_QUESTIONS[(sampleIdx + 2) % SAMPLE_QUESTIONS.length]].map((q, i) => (
                 <button
-                  onClick={handleAnalyze}
-                  disabled={!file && !textInput.trim()}
-                  className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <span className="flex items-center justify-center gap-2">
-                    <ShieldIcon className="w-5 h-5" />
-                    Start Adversarial Analysis
-                  </span>
-                </button>
-              </div>
-            )}
-
-            {/* ── Generate Mode ────────────────────────────────────── */}
-            {mode === "generate" && (
-              <div className="glass-card p-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <label className="block text-sm font-semibold mb-2 text-[var(--color-lexai-text-muted)]">
-                      Document Type
-                    </label>
-                    <select
-                      className="lexai-input"
-                      value={selectedType}
-                      onChange={(e) => setSelectedType(e.target.value)}
-                    >
-                      {templates.length > 0
-                        ? templates.map((t) => (
-                            <option key={t.document_type} value={t.document_type}>
-                              {t.title}
-                            </option>
-                          ))
-                        : (
-                            <>
-                              <option value="RENT_AGREEMENT">Rental Agreement (11-month)</option>
-                              <option value="NDA">Non-Disclosure Agreement</option>
-                              <option value="EMPLOYMENT">Employment Contract</option>
-                              <option value="FREELANCE">Freelance Contract</option>
-                              <option value="PARTNERSHIP">Partnership Deed</option>
-                              <option value="SALE">Sale Agreement</option>
-                              <option value="MOU">Memorandum of Understanding</option>
-                            </>
-                          )}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold mb-2 text-[var(--color-lexai-text-muted)]">
-                      Location / Jurisdiction
-                    </label>
-                    <input
-                      className="lexai-input"
-                      placeholder="e.g. Bangalore, Karnataka"
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold mb-2 text-[var(--color-lexai-text-muted)]">
-                      Party A (First Party)
-                    </label>
-                    <input
-                      className="lexai-input"
-                      placeholder="e.g. Rajesh Kumar"
-                      value={partyA}
-                      onChange={(e) => setPartyA(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold mb-2 text-[var(--color-lexai-text-muted)]">
-                      Party B (Second Party)
-                    </label>
-                    <input
-                      className="lexai-input"
-                      placeholder="e.g. Amit Sharma"
-                      value={partyB}
-                      onChange={(e) => setPartyB(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-6">
-                  <label className="block text-sm font-semibold mb-2 text-[var(--color-lexai-text-muted)]">
-                    Describe what you need
-                  </label>
-                  <textarea
-                    className="lexai-textarea"
-                    placeholder="e.g. 11-month rent agreement for a 2BHK flat in HSR Layout, Bangalore. Monthly rent ₹25,000, security deposit ₹75,000. Tenant is a software engineer working from home..."
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={5}
-                  />
-                </div>
-
-                <button
-                  onClick={handleGenerate}
-                  disabled={!description.trim()}
-                  className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <span className="flex items-center justify-center gap-2">
-                    <SparkleIcon className="w-5 h-5" />
-                    Generate & Harden Document
-                  </span>
-                </button>
-              </div>
-            )}
-
-            {/* ── Business Setup Mode ───────────────────────────────── */}
-            {mode === "business" && (
-              <div className="glass-card p-8">
-                <BusinessSetupChat />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── Processing View ──────────────────────────────────────── */}
-        {isProcessing && (
-          <div className="glass-card p-12 text-center animate-slide-up">
-            <div className="relative w-32 h-32 mx-auto mb-8">
-              {/* Shield */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <ShieldIcon className="w-16 h-16 text-[var(--color-lexai-accent)]" />
-              </div>
-              {/* Rotating ring */}
-              <div className="absolute inset-0 border-2 border-t-[var(--color-lexai-accent)] border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin-slow" />
-              {/* Pulse */}
-              <div className="absolute inset-0 border-2 border-[var(--color-lexai-accent)] rounded-full animate-pulse-ring opacity-30" />
-            </div>
-
-            <h3 className="text-2xl font-bold mb-2 font-[var(--font-heading)]">
-              {currentRound > 0 ? (
-                <>
-                  Review Round{" "}
-                  <span className="text-[var(--color-lexai-accent)]">{currentRound}</span> / 3
-                </>
-              ) : (
-                "Starting your contract check…"
-              )}
-            </h3>
-            <p className="text-[var(--color-lexai-text-muted)] mb-6">{statusText}</p>
-
-            {/* Progress bar */}
-            <div className="max-w-md mx-auto mb-8">
-              <div className="progress-bar">
-                <div
-                  className="progress-fill"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <p className="text-sm text-[var(--color-lexai-text-muted)] mt-2">
-                {progress}% complete
-              </p>
-            </div>
-
-            {/* Round cards */}
-            {rounds.length > 0 && (
-              <div className="flex flex-col gap-4 max-w-lg mx-auto">
-                {rounds.map((round) => (
-                  <div
-                    key={round.round_number}
-                    className="glass-card p-4 flex items-center justify-between animate-slide-up"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[var(--color-lexai-surface-2)] flex items-center justify-center font-bold text-[var(--color-lexai-accent)]">
-                        {round.round_number}
-                      </div>
-                      <div className="text-left">
-                        <p className="font-semibold text-sm">Round {round.round_number}</p>
-                        <p className="text-xs text-[var(--color-lexai-text-muted)]">
-                          {round.vulnerabilities_found} problems spotted
-                        </p>
-                      </div>
-                    </div>
-                    <div
-                      className="text-2xl font-bold"
-                      style={{ color: getScoreColor(round.score) }}
-                    >
-                      {round.score}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Error ─────────────────────────────────────────────────── */}
-        {error && (
-          <div className="glass-card p-6 border-[var(--color-lexai-danger)] bg-red-500/5 mb-6">
-            <p className="text-[var(--color-lexai-danger)] font-semibold text-lg">Analysis Failed</p>
-            <p className="text-sm text-[var(--color-lexai-text-muted)] mt-2 leading-relaxed">{error}</p>
-            <div className="flex gap-3 mt-4">
-              <button
-                onClick={() => {
-                  setError(null);
-                  setResult(null);
-                  setIsProcessing(false);
-                }}
-                className="btn-secondary"
-              >
-                ← Try Again
-              </button>
-              {error?.includes("rate-limited") && (
-                <p className="text-xs text-[var(--color-lexai-text-muted)] self-center">
-                  Tip: Wait ~30s before retrying to avoid simultaneous API calls.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── Results View ──────────────────────────────────────────── */}
-        {result && !isProcessing && (
-          <div className="animate-slide-up">
-
-            {/* ← Back button */}
-            <button
-              onClick={() => {
-                setResult(null);
-                setFile(null);
-                setTextInput("");
-                setRounds([]);
-                setActiveResultTab("overview");
-              }}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 20,
-                padding: "8px 16px",
-                borderRadius: 10,
-                border: "1px solid var(--color-lexai-border)",
-                background: "transparent",
-                color: "var(--color-lexai-text-muted)",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.2s",
-              }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLButtonElement).style.color = "var(--color-lexai-text)";
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-lexai-accent)";
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLButtonElement).style.color = "var(--color-lexai-text-muted)";
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-lexai-border)";
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5M12 19l-7-7 7-7"/>
-              </svg>
-              Back
-            </button>
-
-            {/* Score hero */}
-            <div className="glass-card p-8 mb-6 text-center glow-accent">
-              <div className="flex items-center justify-center gap-8 mb-6">
-                {/* Before score */}
-                <div className="text-center">
-                  <p className="text-sm text-[var(--color-lexai-text-muted)] mb-2">Before</p>
-                  <div
-                    className="text-4xl font-extrabold"
-                 style={{ color: getScoreColor(result.rounds[0]?.score ?? result.risk_score) }}
-                  >
-                    {result.rounds[0]?.score ?? result.risk_score}
-                  </div>
-                </div>
-
-                {/* Arrow */}
-                <div className="text-3xl text-[var(--color-lexai-accent)]">→</div>
-
-                {/* After score */}
-                <div className="text-center">
-                  <p className="text-sm text-[var(--color-lexai-text-muted)] mb-2">After (Best)</p>
-                  <div
-                    className="text-5xl font-extrabold"
-                    style={{ color: getScoreColor(result.risk_score) }}
-                  >
-                    {result.risk_score}
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-lg text-[var(--color-lexai-text-muted)]">
-                Checked across{" "}
-                <span className="text-white font-bold">{result.rounds.length}</span>{" "}
-                review rounds
-              </p>
-              {result.pii_entities_found > 0 && (
-                <p className="text-sm text-[var(--color-lexai-info)] mt-2">
-                  🔒 {result.pii_entities_found} personal details detected & protected
-                </p>
-              )}
-            </div>
-
-            {/* Result tabs */}
-            <div className="flex gap-2 mb-6 border-b border-[var(--color-lexai-border)] pb-1 flex-wrap">
-              {(["overview", "vulns", "document", "rounds", "caselaw", "negotiate"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  id={`result-tab-${tab}`}
-                  onClick={() => {
-                    setActiveResultTab(tab);
-                    // Lazy-load case law when tab is opened
-                    if (tab === "caselaw" && kanoonResults.length === 0) {
-                      fetchCaseLaw("shareholders agreement");
-                    }
+                  key={`${sampleIdx}-${i}`}
+                  onClick={() => handleSampleClick(q)}
+                  style={{
+                    padding: "7px 14px", borderRadius: 20,
+                    border: "1px solid var(--color-lexai-border)",
+                    background: "var(--color-lexai-surface-2)",
+                    color: "var(--color-lexai-text)",
+                    fontSize: "0.76rem", cursor: "pointer",
+                    transition: "all 0.2s",
+                    animation: "fadeSlideIn 0.4s ease",
+                    maxWidth: 220, textAlign: "center", lineHeight: 1.4,
                   }}
-                  className={`px-4 py-2 text-sm font-semibold transition-all rounded-t-lg ${
-                    activeResultTab === tab
-                      ? "text-[var(--color-lexai-accent)] bg-[var(--color-lexai-surface-2)]"
-                      : "text-[var(--color-lexai-text-muted)] hover:text-white"
-                  }`}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLElement).style.borderColor = "var(--color-lexai-accent)";
+                    (e.currentTarget as HTMLElement).style.background = "rgba(212,130,26,0.06)";
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLElement).style.borderColor = "var(--color-lexai-border)";
+                    (e.currentTarget as HTMLElement).style.background = "var(--color-lexai-surface-2)";
+                  }}
                 >
-                  {tab === "overview" && "Summary"}
-                  {tab === "vulns" && "Problems Found"}
-                  {tab === "document" && "Finalized Contract"}
-                  {tab === "rounds" && "Review Process"}
-                  {tab === "caselaw" && "⚖️ Relevant Cases"}
-                  {tab === "negotiate" && "📧 Suggest Changes"}
+                  {q}
                 </button>
               ))}
             </div>
+          </div>
 
-            {/* Tab content */}
-            <div className="glass-card p-6">
-              {activeResultTab === "overview" && (
-                <div>
-                {/* ── Point-wise Analysis Summary ── */}
-                  <div className="mb-6">
-                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                      📋 Summary of Findings
-                    </h3>
-                    {(() => {
-                      const initScore = result.rounds[0]?.score ?? result.risk_score;
-                      const finalScore = result.risk_score;
-                      const improvement = initScore - finalScore;
-                      const totalVulns = result.rounds.reduce((s, r) => s + (r.vulnerabilities_found ?? 0), 0);
-                      const totalPatches = result.rounds.reduce((s, r) => s + (r.patches_applied ?? 0), 0);
-                      const allVulns = result.rounds.flatMap(r => r.vulnerabilities ?? []);
-                      const critCount = allVulns.filter(v => v.severity === "CRITICAL").length;
-                      const highCount = allVulns.filter(v => v.severity === "HIGH").length;
-                      const medCount  = allVulns.filter(v => v.severity === "MEDIUM").length;
-                      const lowCount  = allVulns.filter(v => v.severity === "LOW").length;
-                      const riskLabel = finalScore < 15 ? "✅ LOW — Safe to use"
-                        : finalScore < 30 ? "⚠️ MODERATE — Review before signing"
-                        : finalScore < 50 ? "🔶 ELEVATED — Significant issues found"
-                        : finalScore < 70 ? "🔴 HIGH — Substantial risks"
-                        : "🚨 CRITICAL — Do NOT sign without professional review";
-                      const summaryPoints = [
-                        { icon: "🔁", label: "Review Rounds", value: `${result.rounds.length} rounds of checks finished` },
-                        { icon: "📉", label: "Overall Improvement", value: improvement > 0 ? `Risk score dropped by ${improvement} pts (${initScore} → ${finalScore})` : `Risk score: ${finalScore}/100 (best performance)` },
-                        { icon: "🐛", label: "Total Issues Spotted", value: `${totalVulns} contract issues identified` },
-                        { icon: "🛡️", label: "Changes Made", value: `${totalPatches} clauses improved by our editor` },
-                        ...(critCount > 0 ? [{ icon: "💀", label: "Critical Issues", value: `${critCount} critical problems — must fix before signing` }] : []),
-                        ...(highCount > 0 ? [{ icon: "🔴", label: "Serious Issues", value: `${highCount} serious problems found` }] : []),
-                        ...(medCount > 0  ? [{ icon: "🟠", label: "Minor Issues", value: `${medCount} minor problems found` }] : []),
-                        ...(lowCount > 0  ? [{ icon: "🟡", label: "Small Issues", value: `${lowCount} small issues found` }] : []),
-                        { icon: "⚖️", label: "Overall Risk Level", value: riskLabel },
-                        ...(result.pii_entities_found > 0 ? [{ icon: "🔒", label: "Privacy Protection", value: `${result.pii_entities_found} personal details hidden` }] : []),
-                      ];
-                      return (
-                        <div className="flex flex-col gap-3">
-                          {summaryPoints.map((pt, i) => (
-                            <div key={i} className="flex items-start gap-3 bg-[var(--color-lexai-surface)] rounded-lg p-3 border border-[var(--color-lexai-border)]">
-                              <span className="text-lg mt-0.5">{pt.icon}</span>
-                              <div>
-                                <p className="text-xs font-bold text-[var(--color-lexai-text-muted)] uppercase tracking-wider">{pt.label}</p>
-                                <p className="text-sm text-white mt-0.5 leading-relaxed">{pt.value}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
+          {/* Input */}
+          <form onSubmit={handleSubmit} style={{ padding: "16px 20px", display: "flex", gap: 10, alignItems: "flex-end" }}>
+            <textarea
+              ref={textareaRef}
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}
+              placeholder="Type your question about contracts, rights, or your creator business…"
+              rows={2}
+              style={{
+                flex: 1,
+                background: "var(--color-lexai-surface-2)",
+                border: "1.5px solid var(--color-lexai-border)",
+                borderRadius: 14,
+                padding: "10px 14px",
+                fontSize: "0.88rem",
+                color: "var(--color-lexai-text)",
+                resize: "none",
+                outline: "none",
+                fontFamily: "var(--font-body)",
+                transition: "border-color 0.2s",
+              }}
+              onFocus={e => { (e.target as HTMLElement).style.borderColor = "var(--color-lexai-accent)"; }}
+              onBlur={e => { (e.target as HTMLElement).style.borderColor = "var(--color-lexai-border)"; }}
+            />
+            <button
+              type="submit"
+              disabled={!query.trim()}
+              style={{
+                width: 42, height: 42, borderRadius: "50%", flexShrink: 0,
+                background: query.trim() ? "var(--color-lexai-accent)" : "var(--color-lexai-surface-2)",
+                border: "none", cursor: query.trim() ? "pointer" : "not-allowed",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "1.1rem", color: query.trim() ? "#0d0b08" : "var(--color-lexai-text-muted)",
+                transition: "all 0.2s",
+              }}
+            >↑</button>
+          </form>
+          <p style={{ textAlign: "center", fontSize: "0.68rem", color: "var(--color-lexai-text-muted)", padding: "0 20px 14px", opacity: 0.7 }}>
+            Free to use. Your conversations are private.
+          </p>
+        </div>
+      </section>
 
-                  {/* Contract Health Radar */}
-                  {result.radar && (
-                    <div className="mt-8">
-                      <h4 className="text-md font-bold mb-4">Contract Strengths Overview</h4>
-                      <ComplianceRadar scores={result.radar as unknown as Record<string, number>} />
-                    </div>
-                  )}
-                </div>
-              )}
+      {/* ── Features ── */}
+      <section id="features" style={{ padding: "72px 24px", maxWidth: 1100, margin: "0 auto" }}>
+        <div data-reveal id="features-header" style={{ textAlign: "center", marginBottom: 48, opacity: visible.has("features-header") ? 1 : 0, transform: visible.has("features-header") ? "none" : "translateY(20px)", transition: "all 0.5s ease" }}>
+          <span style={{ fontSize: "0.72rem", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--color-lexai-accent)", fontWeight: 700 }}>Features</span>
+          <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "clamp(1.5rem, 4vw, 2.5rem)", fontWeight: 900, marginTop: 10, marginBottom: 12 }}>
+            Everything You Need to Stay Protected
+          </h2>
+          <p style={{ color: "var(--color-lexai-text-muted)", fontSize: "1rem", maxWidth: 500, margin: "0 auto" }}>
+            Four tools, all included. From checking contracts to calling out brands safely.
+          </p>
+        </div>
 
-              {activeResultTab === "vulns" && (
-                <div>
-                  <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                    <h3 className="text-lg font-bold">Problems Found</h3>
-                  </div>
-
-                {(() => {
-                    const allVulns = result.rounds.flatMap(r => r.vulnerabilities ?? []);
-                    return (
-                      <>
-                        {/* Vulnerability Network */}
-                        {allVulns.length > 0 && (
-                          <div className="glass-card p-4 mb-6">
-                            <h4 className="text-sm font-bold mb-3 text-[var(--color-lexai-text-muted)] uppercase tracking-wider">
-                              🕸️ Issue Map
-                            </h4>
-                            <LoopholeNetwork
-                              vulnerabilities={allVulns.map((v: Vulnerability, i: number) => ({
-                                id: `v-${i}`,
-                                title: v.name ?? "Unknown",
-                                severity: (v.severity?.toLowerCase() ?? "medium") as "critical" | "high" | "medium" | "low",
-                                description: v.explanation,
-                              }))}
-                            />
-                          </div>
-                        )}
-
-                        {/* Vulnerability cards */}
-                        {allVulns.length > 0 ? (
-                          <div className="flex flex-col gap-4">
-                            {allVulns.map((vuln: Vulnerability, i: number) => (
-                              <div
-                                key={i}
-                                className="bg-[var(--color-lexai-surface)] rounded-xl p-5 border border-[var(--color-lexai-border)]"
-                              >
-                                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                                  <h4 className="font-semibold">{i + 1}. {vuln.name}</h4>
-                                  <span className={getSeverityClass(vuln.severity)}>{vuln.severity}</span>
-                                </div>
-                                {vuln.affected_clause && (
-                                  <p className="text-xs text-[var(--color-lexai-text-muted)] mb-2">
-                                    📍 Location: <strong>{vuln.affected_clause}</strong>
-                                  </p>
-                                )}
-                                <p className="text-sm text-[var(--color-lexai-text-muted)] leading-relaxed mb-3">
-                                  {vuln.explanation}
-                                </p>
-                                {vuln.exploitation_scenario && (
-                                  <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 mb-3">
-                                    <p className="text-xs font-semibold text-red-400 mb-1">⚠️ Possible Consequence</p>
-                                    <p className="text-xs text-[var(--color-lexai-text-muted)] leading-relaxed">{vuln.exploitation_scenario}</p>
-                                  </div>
-                                )}
-                                {vuln.suggested_fix && (
-                                  <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-3">
-                                    <p className="text-xs font-semibold text-green-400 mb-1">✅ Recommended Change</p>
-                                    <p className="text-xs text-[var(--color-lexai-text-muted)] leading-relaxed">{vuln.suggested_fix}</p>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-center py-12">
-                            <p className="text-5xl mb-4">✅</p>
-                            <p className="text-lg font-semibold text-[var(--color-lexai-success)]">No Problems Found ✅</p>
-                            <p className="text-sm text-[var(--color-lexai-text-muted)] mt-2">This contract passed all our checks — great news!</p>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-
-
-
-              {activeResultTab === "document" && (
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold">Hardened Document</h3>
-                    <button
-                      onClick={() =>
-                        result?.task_id &&
-                        generatePDF(result.task_id, result.final_document ?? "", {
-                          initial_score: result.rounds[0]?.score ?? result.risk_score,
-                          final_score: result.risk_score,
-                          rounds: result.rounds.length,
-                          document_type: "Legal Document",
-                          summary: result.summary,
-                        })
-                      }
-                      className="btn-secondary text-sm"
-                    >
-                      <span className="flex items-center gap-2">
-                        <DownloadIcon className="w-4 h-4" />
-                        Download PDF
-                      </span>
-                    </button>
-                  </div>
-                  <div className="bg-[var(--color-lexai-surface)] rounded-xl p-6 border border-[var(--color-lexai-border)]">
-                    <pre className="text-sm text-[var(--color-lexai-text)] whitespace-pre-wrap font-[var(--font-mono)] leading-relaxed max-h-[600px] overflow-y-auto">
-                      {result.final_document}
-                    </pre>
-                  </div>
-                </div>
-              )}
-
-              {activeResultTab === "rounds" && (
-                <div>
-                  <div className="mb-5">
-                    <h3 className="text-lg font-bold mb-1">Review Rounds — What Was Found & Fixed</h3>
-                    <p style={{ fontSize: "0.8rem", color: "var(--color-lexai-text-muted)", lineHeight: 1.6 }}>
-                      Each round: our <strong>Problem Finder</strong> attacks the contract, then the <strong>Contract Fixer</strong> patches the issues.
-                      The score shown is what the Problem Finder rated <em>that version</em> of the document —
-                      the final score uses the <strong>best rating achieved</strong> across all rounds.
-                    </p>
-                  </div>
-                  <div className="diff-wrap">
-                    {result.rounds.map((round, idx) => {
-                      const prevScore = idx === 0 ? (result.rounds[0]?.score ?? result.risk_score) : result.rounds[idx - 1].score;
-                      const delta = prevScore - round.score;
-                      const isImprovement = delta > 0;
-                      const vulns = round.vulnerabilities ?? [];
-                      return (
-                        <div key={round.round_number} className="diff-round-block">
-                          {/* Header */}
-                          <div className="diff-round-header">
-                            <p className="diff-round-title">⚔️ Round {round.round_number}</p>
-                            <div className="diff-score-arrow">
-                              <span style={{ color: getScoreColor(prevScore), fontWeight: 700 }}>{prevScore}</span>
-                              <span style={{ color: "var(--color-lexai-text-muted)" }}>→</span>
-                              <span style={{ color: getScoreColor(round.score), fontWeight: 700 }}>{round.score}</span>
-                              <span style={{ color: isImprovement ? "var(--color-lexai-success)" : "var(--color-lexai-danger)", fontSize: "0.72rem" }}>
-                                {isImprovement ? `↓${delta} pts ✅` : delta === 0 ? "no change" : `↑${Math.abs(delta)} pts (new issues found)`}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Body */}
-                          <div className="diff-body">
-                            {/* Left: vulnerabilities found */}
-                            <div className="diff-panel">
-                              <p className="diff-panel-label">🔍 Contract Problems Found ({vulns.length})</p>
-                              {vulns.length > 0 ? (
-                                <ul className="diff-vuln-list">
-                                  {vulns.map((v: Vulnerability, i: number) => (
-                                    <li
-                                      key={i}
-                                      className={`diff-vuln-item diff-vuln-${v.severity?.toLowerCase() ?? "medium"}`}
-                                    >
-                                      {v.name ?? "Unknown issue"}
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p style={{ fontSize: "0.8rem", color: "var(--color-lexai-success)" }}>✓ No problems found</p>
-                              )}
-                            </div>
-
-                            {/* Right: patches applied */}
-                            <div className="diff-panel">
-                              <p className="diff-panel-label">🛡️ Contract Fixer Patched ({round.patches_applied ?? 0})</p>
-                              {round.patch_summary ? (
-                                <p className="diff-panel-content">{round.patch_summary}</p>
-                              ) : (
-                                <p style={{ fontSize: "0.8rem", color: "var(--color-lexai-text-muted)" }}>
-                                  {round.patches_applied} clauses strengthened
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* ── Case Law Tab ──────────────────────────── */}
-              {activeResultTab === "caselaw" && (
-                <div>
-                  <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                    <h3 className="text-lg font-bold">Relevant Indian Case Law</h3>
-                    <div className="flex gap-2 items-center flex-wrap">
-                      <select
-                        id="kanoon-court-filter"
-                        className="lexai-input text-sm py-1.5"
-                        value={kanoonCourt}
-                        onChange={(e) => {
-                          setKanoonCourt(e.target.value);
-                          fetchCaseLaw("legal document", e.target.value);
-                        }}
-                      >
-                        <option value="">All Courts</option>
-                        <option value="supremecourt">Supreme Court</option>
-                        <option value="delhi">Delhi High Court</option>
-                        <option value="delhidc">Delhi District Courts</option>
-                        <option value="karnataka">Karnataka High Court</option>
-                        <option value="bombay">Bombay High Court</option>
-                        <option value="madras">Madras High Court</option>
-                      </select>
-                      <button
-                        id="kanoon-refresh-btn"
-                        type="button"
-                        className="btn-secondary text-sm py-1.5 px-4"
-                        onClick={() => fetchCaseLaw("legal document")}
-                        disabled={kanoonLoading}
-                      >
-                        {kanoonLoading ? "Searching…" : "↻ Refresh"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {kanoonLoading && (
-                    <div className="text-center py-10 text-[var(--color-lexai-text-muted)]">
-                      <div className="inline-block w-8 h-8 border-2 border-[var(--color-lexai-accent)] border-t-transparent rounded-full animate-spin mb-3" />
-                      <p className="text-sm">Searching Indian Kanoon…</p>
-                    </div>
-                  )}
-
-                  {!kanoonLoading && kanoonResults.length === 0 && (
-                    <div className="text-center py-10">
-                      <p className="text-[var(--color-lexai-text-muted)] text-sm">
-                        No cases found — try a different court filter or click Refresh.
-                      </p>
-                      <p className="text-xs text-[var(--color-lexai-text-muted)] mt-2 opacity-60">
-                        (Indian Kanoon API must be configured on the backend)
-                      </p>
-                    </div>
-                  )}
-
-                  {!kanoonLoading && kanoonResults.length > 0 && (
-                    <div className="flex flex-col gap-3">
-                      {kanoonResults.map((c) => (
-                        <a
-                          key={c.tid}
-                          href={c.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="kanoon-card"
-                          id={`kanoon-case-${c.tid}`}
-                        >
-                          <p className="kanoon-card-title">{c.title}</p>
-                          <div className="kanoon-card-meta">
-                            {c.court && <span className="kanoon-badge">{c.court}</span>}
-                            {c.date && <span>{c.date}</span>}
-                            <span className="kanoon-badge" style={{ background: "rgba(34,197,94,0.1)", color: "var(--color-lexai-success)", borderColor: "rgba(34,197,94,0.2)" }}>
-                              {c.doc_type}
-                            </span>
-                          </div>
-                          {c.headline && <p className="kanoon-card-headline">{c.headline}</p>}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-
-                  <p className="kanoon-attribution">Powered by Indian Kanoon · indiankanoon.org</p>
-                </div>
-              )}
-
-              {/* ── Negotiate Tab ─────────────────────────────────────── */}
-              {activeResultTab === "negotiate" && (
-                <NegotiateTab
-                  vulnerabilities={result.rounds.flatMap(r => r.vulnerabilities ?? [])}
-                />
-              )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 20 }}>
+          {FEATURES.map((f, i) => (
+            <div
+              key={f.title}
+              id={`feature-${i}`}
+              data-reveal
+              style={{
+                background: f.color, border: `1px solid ${f.border}`,
+                borderRadius: 20, padding: "28px 24px", cursor: "pointer",
+                opacity: visible.has(`feature-${i}`) ? 1 : 0,
+                transform: visible.has(`feature-${i}`) ? "none" : "translateY(24px)",
+                transition: `all 0.5s ease ${i * 0.08}s`,
+              }}
+              onClick={() => router.push(f.title === "Check My Contract" ? "/check" : f.title === "Write a Contract" ? "/generate" : f.title === "Set Up My Business" ? "/business" : "/negotiate")}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-4px)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = visible.has(`feature-${i}`) ? "none" : "translateY(24px)"; }}
+            >
+              <div style={{ fontSize: "2rem", marginBottom: 16 }}>{f.icon}</div>
+              <h3 style={{ fontWeight: 800, fontSize: "1rem", marginBottom: 10 }}>{f.title}</h3>
+              <p style={{ fontSize: "0.82rem", color: "var(--color-lexai-text-muted)", lineHeight: 1.7, margin: 0 }}>{f.desc}</p>
             </div>
+          ))}
+        </div>
+      </section>
 
-            {/* Action buttons */}
-            <div className="flex gap-4 mt-6">
-              <button
-                onClick={() => {
-                  setResult(null);
-                  setFile(null);
-                  setTextInput("");
-                  setRounds([]);
-                  setActiveResultTab("overview");
+      {/* ── How it works ── */}
+      <section id="how-it-works" style={{ padding: "72px 24px", background: "rgba(255,255,255,0.02)", borderTop: "1px solid var(--color-lexai-border)" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto" }}>
+          <div data-reveal id="how-header" style={{ textAlign: "center", marginBottom: 48, opacity: visible.has("how-header") ? 1 : 0, transform: visible.has("how-header") ? "none" : "translateY(20px)", transition: "all 0.5s ease" }}>
+            <span style={{ fontSize: "0.72rem", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--color-lexai-accent)", fontWeight: 700 }}>How It Works</span>
+            <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "clamp(1.5rem, 4vw, 2.5rem)", fontWeight: 900, marginTop: 10, marginBottom: 12 }}>
+              No Appointments. No Waiting.
+            </h2>
+            <p style={{ color: "var(--color-lexai-text-muted)", fontSize: "1rem" }}>
+              Works 24/7, even at 2 AM before you sign that brand deal.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            {HOW_IT_WORKS.map((step, i) => (
+              <div
+                key={step.step}
+                id={`step-${i}`}
+                data-reveal
+                style={{
+                  display: "flex", gap: 24, alignItems: "flex-start",
+                  opacity: visible.has(`step-${i}`) ? 1 : 0,
+                  transform: visible.has(`step-${i}`) ? "none" : "translateX(-20px)",
+                  transition: `all 0.5s ease ${i * 0.1}s`,
                 }}
-                className="btn-secondary flex-1"
               >
-                <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 12H5M12 19l-7-7 7-7"/>
-                  </svg>
-                  Analyse Another
-                </span>
-              </button>
-              <button onClick={handleDownload} className="btn-secondary flex-1">
-                <span className="flex items-center justify-center gap-2">
-                  <DownloadIcon className="w-5 h-5" />
-                  Download as TXT
-                </span>
-              </button>
-              <button
-                onClick={() =>
-                  result?.task_id &&
-                  generatePDF(result.task_id, result.final_document ?? "", {
-                    initial_score: result.rounds[0]?.score ?? result.risk_score,
-                    final_score: result.risk_score,
-                    rounds: result.rounds.length,
-                    document_type: "Legal Document",
-                    summary: result.summary,
-                  })
-                }
-                className="btn-primary flex-1"
-              >
-                <span className="flex items-center justify-center gap-2">
-                  <DownloadIcon className="w-5 h-5" />
-                  Download PDF
-                </span>
-              </button>
-            </div>
+                <div style={{
+                  width: 56, height: 56, borderRadius: "50%", flexShrink: 0,
+                  background: "rgba(212,130,26,0.12)", border: "1px solid rgba(212,130,26,0.3)",
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                }}>
+                  <span style={{ fontSize: "1.2rem" }}>{step.icon}</span>
+                </div>
+                <div style={{ paddingTop: 4 }}>
+                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--color-lexai-accent)", letterSpacing: "0.08em" }}>STEP {step.step}</span>
+                  <h3 style={{ fontWeight: 800, fontSize: "1.05rem", margin: "4px 0 8px" }}>{step.title}</h3>
+                  <p style={{ fontSize: "0.88rem", color: "var(--color-lexai-text-muted)", lineHeight: 1.7, margin: 0 }}>{step.desc}</p>
+                </div>
+              </div>
+            ))}
           </div>
-        )}
 
-        {/* ── How It Works (bottom section) ────────────────────────── */}
-        {!isProcessing && !result && (
-          <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="glass-card p-6 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center mx-auto mb-4">
-                <FileIcon className="w-7 h-7 text-[var(--color-lexai-accent)]" />
-              </div>
-              <h3 className="font-bold mb-2">1. Submit Document</h3>
-              <p className="text-sm text-[var(--color-lexai-text-muted)]">
-                Upload a PDF, paste text, or generate a new document from a description.
-              </p>
-            </div>
-            <div className="glass-card p-6 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500/20 to-orange-500/20 flex items-center justify-center mx-auto mb-4">
-                <SwordIcon className="w-7 h-7 text-[var(--color-lexai-warning)]" />
-              </div>
-              <h3 className="font-bold mb-2">2. Adversarial Battle</h3>
-              <p className="text-sm text-[var(--color-lexai-text-muted)]">
-                LoopholeHound attacks. DocumentCraft patches. 2-3 rounds of GAN-inspired hardening.
-              </p>
-            </div>
-            <div className="glass-card p-6 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center mx-auto mb-4">
-                <ShieldIcon className="w-7 h-7 text-[var(--color-lexai-success)]" />
-              </div>
-              <h3 className="font-bold mb-2">3. Bulletproof Result</h3>
-              <p className="text-sm text-[var(--color-lexai-text-muted)]">
-                Get a hardened document with risk score, vulnerability report, and compliance radar.
-              </p>
-            </div>
+          <div style={{ textAlign: "center", marginTop: 52 }}>
+            <button onClick={() => router.push("/dashboard")} className="btn-primary" style={{ padding: "14px 36px", fontSize: "1rem" }}>
+              Get Started for Free →
+            </button>
           </div>
-        )}
-      </div>
-    </main>
+        </div>
+      </section>
+
+      {/* ── Footer ── */}
+      <footer style={{ borderTop: "1px solid var(--color-lexai-border)", padding: "28px 48px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: "1.1rem" }}>🛡️</span>
+          <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "1rem" }}>
+            Creator<span style={{ color: "var(--color-lexai-accent)" }}>Shield</span>
+          </span>
+        </div>
+        <p style={{ fontSize: "0.75rem", color: "var(--color-lexai-text-muted)" }}>
+          AI-powered contract protection for Indian creators. Not a substitute for professional legal advice.
+        </p>
+      </footer>
+    </div>
   );
 }

@@ -95,8 +95,14 @@ export default function VoiceInterface({
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // ── TTS: speak when textToSpeak changes ────────────────────────────────────
+  // ── TTS: speak ONLY when textToSpeak genuinely changes (not on mount) ───────
+  const hasMountedRef = useRef(false);
   useEffect(() => {
+    // Skip the very first render — only speak on subsequent changes
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
     if (!textToSpeak) return;
     const langMap: Record<string, string> = {
       hi: "hi-IN", kn: "kn-IN", ta: "ta-IN", te: "te-IN", mr: "mr-IN", en: "en-IN",
