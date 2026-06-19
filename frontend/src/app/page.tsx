@@ -653,6 +653,46 @@ export default function Home() {
         {/* ── Results View ──────────────────────────────────────────── */}
         {result && !isProcessing && (
           <div className="animate-slide-up">
+
+            {/* ← Back button */}
+            <button
+              onClick={() => {
+                setResult(null);
+                setFile(null);
+                setTextInput("");
+                setRounds([]);
+                setActiveResultTab("overview");
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 20,
+                padding: "8px 16px",
+                borderRadius: 10,
+                border: "1px solid var(--color-lexai-border)",
+                background: "transparent",
+                color: "var(--color-lexai-text-muted)",
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLButtonElement).style.color = "var(--color-lexai-text)";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-lexai-accent)";
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLButtonElement).style.color = "var(--color-lexai-text-muted)";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-lexai-border)";
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+              </svg>
+              Back
+            </button>
+
             {/* Score hero */}
             <div className="glass-card p-8 mb-6 text-center glow-accent">
               <div className="flex items-center justify-center gap-8 mb-6">
@@ -1063,10 +1103,16 @@ export default function Home() {
                   setFile(null);
                   setTextInput("");
                   setRounds([]);
+                  setActiveResultTab("overview");
                 }}
                 className="btn-secondary flex-1"
               >
-                Analyze Another Document
+                <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                  </svg>
+                  Analyse Another
+                </span>
               </button>
               <button onClick={handleDownload} className="btn-secondary flex-1">
                 <span className="flex items-center justify-center gap-2">

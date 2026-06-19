@@ -165,28 +165,61 @@ function ChecklistCard({
 
 // ── Main Component ────────────────────────────────────────────────────────
 
+const STORAGE_KEY = "cs_business_chat_v1";
+
+function loadSavedSession() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveSession(data: {
+  messages: BusinessSetupMessage[];
+  checklist: ChecklistItemWithState[];
+  sessionId: string;
+  progress: number;
+}) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+}
+
+const INITIAL_MESSAGE: BusinessSetupMessage = {
+  role: "assistant",
+  content:
+    "Hi! I'm your Business Setup Guide 👋\n\nI'll help you figure out exactly which registrations and licences you need as a content creator in India — step by step, in simple language.\n\nTo get started: What kind of content do you make, and are you selling any products or services alongside it?",
+};
+
 export default function BusinessSetupChat() {
-  const [messages, setMessages] = useState<BusinessSetupMessage[]>([
-    {
-      role: "assistant",
-      content:
-        "Hi! I'm your Business Setup Guide 👋\n\nI'll help you figure out exactly which registrations and licences you need as a content creator in India — step by step, in simple language.\n\nTo get started: What kind of content do you make, and are you selling any products or services alongside it?",
-    },
-  ]);
-  const [checklist, setChecklist] = useState<ChecklistItemWithState[]>([]);
+  const saved = loadSavedSession();
+
+  const [messages, setMessages] = useState<BusinessSetupMessage[]>(
+    saved?.messages?.length ? saved.messages : [INITIAL_MESSAGE]
+  );
+  const [checklist, setChecklist] = useState<ChecklistItemWithState[]>(
+    saved?.checklist ?? []
+  );
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [sessionId] = useState(() => `biz_${Date.now()}`);
+  const [progress, setProgress] = useState(saved?.progress ?? 0);
+  const [sessionId] = useState<string>(() => saved?.sessionId ?? `biz_${Date.now()}`);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
+
+  // Persist to localStorage whenever messages/checklist/progress change
+  useEffect(() => {
+    saveSession({ messages, checklist, sessionId, progress });
+  }, [messages, checklist, sessionId, progress]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -196,6 +229,14 @@ export default function BusinessSetupChat() {
       ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
     }
   }, [input]);
+
+  const handleClearChat = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setMessages([INITIAL_MESSAGE]);
+    setChecklist([]);
+    setProgress(0);
+    setShowClearConfirm(false);
+  };
 
   const mergeChecklist = useCallback((newItems: BusinessChecklistItem[]) => {
     setChecklist((prev) => {
@@ -313,6 +354,32 @@ export default function BusinessSetupChat() {
               }}
             >
               {progress}% done
+            </div>
+          )}
+          {/* Clear chat button */}
+          {messages.length > 1 && (
+            <div style={{ position: "relative" }}>
+              {showClearConfirm ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: "0.72rem", color: "var(--color-lexai-text-muted)" }}>Clear chat?</span>
+                  <button
+                    onClick={handleClearChat}
+                    style={{ fontSize: "0.72rem", padding: "3px 8px", borderRadius: 6, background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)", cursor: "pointer" }}
+                  >Yes</button>
+                  <button
+                    onClick={() => setShowClearConfirm(false)}
+                    style={{ fontSize: "0.72rem", padding: "3px 8px", borderRadius: 6, background: "transparent", color: "var(--color-lexai-text-muted)", border: "1px solid var(--color-lexai-border)", cursor: "pointer" }}
+                  >No</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowClearConfirm(true)}
+                  title="Clear chat history"
+                  style={{ fontSize: "0.7rem", padding: "4px 10px", borderRadius: 8, background: "transparent", color: "var(--color-lexai-text-muted)", border: "1px solid var(--color-lexai-border)", cursor: "pointer", whiteSpace: "nowrap" }}
+                >
+                  🗑 Clear
+                </button>
+              )}
             </div>
           )}
         </div>
