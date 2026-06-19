@@ -19,6 +19,7 @@ import VoiceInterface from "@/components/VoiceInterface";
 import ComplianceRadar from "@/components/ComplianceRadar";
 import LoopholeNetwork from "@/components/LoopholeNetwork";
 import BusinessSetupChat from "@/components/BusinessSetupChat";
+import NegotiateTab from "@/components/NegotiateTab";
 import { generatePDF } from "@/lib/generatePDF";
 
 // ── Icons (inline SVG to avoid deps) ────────────────────────────────────
@@ -126,7 +127,9 @@ export default function Home() {
   // Results
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeResultTab, setActiveResultTab] = useState<"overview" | "vulns" | "document" | "rounds" | "caselaw">("overview");
+  const [activeResultTab, setActiveResultTab] = useState<"overview" | "vulns" | "document" | "rounds" | "caselaw" | "negotiate">("overview");
+
+  // Negotiation email is handled by NegotiateTab component
 
   // Case law
   const [kanoonResults, setKanoonResults] = useState<KanoonResult[]>([]);
@@ -693,7 +696,7 @@ export default function Home() {
 
             {/* Result tabs */}
             <div className="flex gap-2 mb-6 border-b border-[var(--color-lexai-border)] pb-1 flex-wrap">
-              {(["overview", "vulns", "document", "rounds", "caselaw"] as const).map((tab) => (
+              {(["overview", "vulns", "document", "rounds", "caselaw", "negotiate"] as const).map((tab) => (
                 <button
                   key={tab}
                   id={`result-tab-${tab}`}
@@ -715,6 +718,7 @@ export default function Home() {
                   {tab === "document" && "Fixed Contract"}
                   {tab === "rounds" && "Review Rounds"}
                   {tab === "caselaw" && "⚖️ Relevant Cases"}
+                  {tab === "negotiate" && "📧 Negotiate"}
                 </button>
               ))}
             </div>
@@ -1041,6 +1045,13 @@ export default function Home() {
 
                   <p className="kanoon-attribution">Powered by Indian Kanoon · indiankanoon.org</p>
                 </div>
+              )}
+
+              {/* ── Negotiate Tab ─────────────────────────────────────── */}
+              {activeResultTab === "negotiate" && (
+                <NegotiateTab
+                  vulnerabilities={result.rounds.flatMap(r => r.vulnerabilities ?? [])}
+                />
               )}
             </div>
 
