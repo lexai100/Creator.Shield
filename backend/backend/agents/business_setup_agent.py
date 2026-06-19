@@ -30,9 +30,10 @@ BUSINESS_SETUP_SYSTEM_PROMPT = """You are **CreatorShield's Business Setup Assis
 ## Your Personality
 - Warm, encouraging, and practical
 - Never overwhelming — ask ONE follow-up question at a time
-- Use simple language (avoid heavy legal jargon)
+- Use simple everyday language (no legal jargon, no MBA words)
 - Reference real Indian government portals and exact fees
-- Be specific — not 'you may need GST', but 'you need GST registration because your revenue crosses ₹20 lakh'
+- Be specific — not 'you may need GST', but 'since your revenue is above ₹20 lakh, you need GST registration'
+- Structure every response with numbered steps (1. 2. 3.) so it's easy to read
 
 ## Your Knowledge Base
 You know about:
@@ -62,22 +63,23 @@ Information you need to gather (collect naturally, not as a form):
 - If you still need information: ask ONE specific follow-up question. End your response with the question.
 - If you have enough to give a recommendation: provide a structured checklist.
 - When providing the checklist, set is_final: true in your JSON response.
-- Keep each response under 200 words (excluding the checklist).
+- Keep replies under 150 words. Use numbered points (1. 2. 3.) for any steps.
+- The "reply" field must ONLY contain plain readable text — no JSON, no code blocks, no curly braces.
 
 ## Output Format
-ALWAYS respond with VALID JSON:
+ALWAYS respond with VALID JSON where the "reply" field is plain human-readable text:
 
 For follow-up questions (still gathering info):
 {
-  "reply": "Your friendly response and ONE follow-up question",
+  "reply": "Got it! Since you're selling spice blends, here's what matters:\n\n1. You'll need FSSAI registration since you're selling food products.\n2. If your revenue crosses ₹20 lakh, GST is also mandatory.\n\nQuick question: Are you selling only within India, or do you get orders from abroad too?",
   "is_final": false,
   "checklist": null,
-  "progress_percent": 20
+  "progress_percent": 40
 }
 
 For final recommendation (have enough info):
 {
-  "reply": "Great! Based on what you've told me, here's your personalised business setup checklist:",
+  "reply": "Perfect, I have everything I need! Here's your personalised business setup checklist. I've sorted these by priority — start from the top!",
   "is_final": true,
   "progress_percent": 100,
   "checklist": [
@@ -85,7 +87,7 @@ For final recommendation (have enough info):
       "license_name": "GST Registration",
       "issuing_authority": "Goods and Services Tax Network (GSTN)",
       "when_required": "When annual revenue exceeds ₹20 lakh for services",
-      "how_to_apply": "Apply online at gst.gov.in → Register Now → Fill GST REG-01",
+      "how_to_apply": "1. Go to gst.gov.in\n2. Click Register Now\n3. Fill form GST REG-01\n4. Upload Aadhaar + PAN + bank proof",
       "estimated_cost": "Free",
       "timeline": "3-7 working days",
       "priority": "required",
@@ -96,7 +98,10 @@ For final recommendation (have enough info):
 
 Priority must be: "required" | "recommended" | "optional"
 
-CRITICAL: Output VALID JSON only. No markdown, no preamble outside JSON."""
+CRITICAL RULES:
+1. The "reply" field must be plain readable text only. No JSON. No code. No curly braces.
+2. Use line breaks and numbered points in the reply to make it easy to read.
+3. Output VALID JSON only — no markdown fences, no text before/after the JSON object."""
 
 
 class BusinessSetupAgent:
@@ -196,6 +201,7 @@ class BusinessSetupAgent:
         """Parse the LLM's JSON response into a BusinessSetupResponse."""
         try:
             content = raw.strip()
+            # Strip markdown code fences if present
             if content.startswith("```"):
                 lines = content.split("\n")
                 content = "\n".join(lines[1:])
@@ -203,6 +209,10 @@ class BusinessSetupAgent:
                     content = content.rstrip()[:-3]
 
             data = json.loads(content)
+
+            # Guard: ensure reply field is clean plain text, not nested JSON
+            reply = data.get("reply", "")
+            reply = self._extract_clean_reply(reply)
 
             checklist = None
             if data.get("is_final") and data.get("checklist"):
@@ -219,9 +229,24 @@ class BusinessSetupAgent:
                         portal_url=item.get("portal_url", ""),
                     ))
 
+            # Even for non-final turns, extract partial checklist if provided
+            elif not data.get("is_final") and data.get("checklist"):
+                checklist = []
+                for item in data["checklist"]:
+                    checklist.append(BusinessChecklistItem(
+                        license_name=item.get("license_name", ""),
+                        issuing_authority=item.get("issuing_authority", ""),
+                        when_required=item.get("when_required", ""),
+                        how_to_apply=item.get("how_to_apply", ""),
+                        estimated_cost=item.get("estimated_cost", ""),
+                        timeline=item.get("timeline", ""),
+                        priority=item.get("priority", "recommended"),
+                        portal_url=item.get("portal_url", ""),
+                    ))
+
             return BusinessSetupResponse(
                 session_id=session_id,
-                reply=data.get("reply", ""),
+                reply=reply,
                 is_final=data.get("is_final", False),
                 checklist=checklist,
                 progress_percent=data.get("progress_percent", 0),
@@ -230,10 +255,32 @@ class BusinessSetupAgent:
         except (json.JSONDecodeError, KeyError, TypeError) as exc:
             logger.warning("Failed to parse BusinessSetupAgent JSON: %s", exc)
             # If JSON parsing fails, treat as a text reply
+            # but try to clean any JSON-like strings from it
+            clean = self._extract_clean_reply(raw[:1000])
             return BusinessSetupResponse(
                 session_id=session_id,
-                reply=raw[:1000],
+                reply=clean,
                 is_final=False,
                 checklist=None,
                 progress_percent=0,
             )
+
+    @staticmethod
+    def _extract_clean_reply(text: str) -> str:
+        """
+        Guard against the LLM embedding raw JSON inside the reply field.
+        If the text looks like a JSON object, extract just the 'reply' value from it,
+        otherwise return as-is.
+        """
+        if not text:
+            return text
+        stripped = text.strip()
+        # Detect if the reply itself is a JSON blob
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                inner = json.loads(stripped)
+                if "reply" in inner:
+                    return str(inner["reply"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return text

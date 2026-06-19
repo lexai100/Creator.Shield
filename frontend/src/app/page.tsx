@@ -350,41 +350,23 @@ export default function Home() {
           <div className="flex justify-center gap-3 mb-8 flex-wrap">
               <button
                 onClick={() => setMode("analyze")}
-                className={`px-5 py-3 rounded-xl font-semibold transition-all text-sm ${
-                  mode === "analyze"
-                    ? "bg-[var(--color-lexai-accent)] text-white shadow-lg shadow-indigo-500/20"
-                    : "bg-[var(--color-lexai-surface-2)] text-[var(--color-lexai-text-muted)] hover:text-white"
-                }`}
+                className={`cs-mode-tab ${mode === "analyze" ? "active" : ""}`}
               >
-                <span className="flex items-center gap-2">
-                  <UploadIcon className="w-4 h-4" />
-                  Contract Shield
-                </span>
+                <UploadIcon className="w-4 h-4" />
+                🛡️ Check My Contract
               </button>
               <button
                 onClick={() => setMode("generate")}
-                className={`px-5 py-3 rounded-xl font-semibold transition-all text-sm ${
-                  mode === "generate"
-                    ? "bg-[var(--color-lexai-accent)] text-white shadow-lg shadow-indigo-500/20"
-                    : "bg-[var(--color-lexai-surface-2)] text-[var(--color-lexai-text-muted)] hover:text-white"
-                }`}
+                className={`cs-mode-tab ${mode === "generate" ? "active" : ""}`}
               >
-                <span className="flex items-center gap-2">
-                  <SparkleIcon className="w-4 h-4" />
-                  Draft Contract
-                </span>
+                <SparkleIcon className="w-4 h-4" />
+                ✍️ Write a Contract
               </button>
               <button
                 onClick={() => setMode("business")}
-                className={`px-5 py-3 rounded-xl font-semibold transition-all text-sm ${
-                  mode === "business"
-                    ? "bg-amber-500 text-white shadow-lg shadow-amber-500/20"
-                    : "bg-[var(--color-lexai-surface-2)] text-[var(--color-lexai-text-muted)] hover:text-white"
-                }`}
+                className={`cs-mode-tab ${mode === "business" ? "active" : ""}`}
               >
-                <span className="flex items-center gap-2">
-                  🏢 Business Setup
-                </span>
+                🏢 Set Up My Business
               </button>
             </div>
 
@@ -728,11 +710,11 @@ export default function Home() {
                       : "text-[var(--color-lexai-text-muted)] hover:text-white"
                   }`}
                 >
-                  {tab === "overview" && "Overview"}
-                  {tab === "vulns" && `Vulnerabilities`}
-                  {tab === "document" && "Final Document"}
-                  {tab === "rounds" && "Battle Log"}
-                  {tab === "caselaw" && "⚖️ Case Law"}
+                  {tab === "overview" && "Summary"}
+                  {tab === "vulns" && "Contract Problems"}
+                  {tab === "document" && "Fixed Contract"}
+                  {tab === "rounds" && "Review Rounds"}
+                  {tab === "caselaw" && "⚖️ Relevant Cases"}
                 </button>
               ))}
             </div>
@@ -763,16 +745,16 @@ export default function Home() {
                         : finalScore < 70 ? "🔴 HIGH — Substantial vulnerabilities"
                         : "🚨 CRITICAL — Do NOT sign without professional review";
                       const summaryPoints = [
-                        { icon: "🔁", label: "Adversarial Rounds", value: `${result.rounds.length} rounds completed` },
-                        { icon: "📉", label: "Risk Reduction", value: improvement > 0 ? `Score improved by ${improvement} pts (${initScore} → ${finalScore})` : `Score: ${finalScore}/100 (no improvement)` },
-                        { icon: "🐛", label: "Total Vulnerabilities Found", value: `${totalVulns} vulnerabilities across all rounds` },
-                        { icon: "🛡️", label: "Patches Applied", value: `${totalPatches} clauses strengthened` },
-                        ...(critCount > 0 ? [{ icon: "💀", label: "Critical Issues", value: `${critCount} CRITICAL vulnerabilities — requires immediate fix` }] : []),
-                        ...(highCount > 0 ? [{ icon: "🔴", label: "High Severity", value: `${highCount} HIGH severity issues` }] : []),
-                        ...(medCount > 0  ? [{ icon: "🟠", label: "Medium Severity", value: `${medCount} MEDIUM severity issues` }] : []),
-                        ...(lowCount > 0  ? [{ icon: "🟡", label: "Low Severity", value: `${lowCount} LOW severity issues` }] : []),
-                        { icon: "⚖️", label: "Final Risk Assessment", value: riskLabel },
-                        ...(result.pii_entities_found > 0 ? [{ icon: "🔒", label: "PII Protection", value: `${result.pii_entities_found} sensitive entities detected and anonymised` }] : []),
+                        { icon: "🔁", label: "Review Rounds", value: `${result.rounds.length} rounds of checking completed` },
+                        { icon: "📉", label: "How Much We Fixed", value: improvement > 0 ? `Risk score dropped by ${improvement} pts (${initScore} → ${finalScore})` : `Risk score: ${finalScore}/100 (best score across all rounds)` },
+                        { icon: "🐛", label: "Total Problems Found", value: `${totalVulns} contract issues spotted across all rounds` },
+                        { icon: "🛡️", label: "Issues Fixed", value: `${totalPatches} clauses strengthened by Contract Fixer` },
+                        ...(critCount > 0 ? [{ icon: "💀", label: "Critical Issues", value: `${critCount} critical problems — must fix before signing` }] : []),
+                        ...(highCount > 0 ? [{ icon: "🔴", label: "Serious Issues", value: `${highCount} serious problems found` }] : []),
+                        ...(medCount > 0  ? [{ icon: "🟠", label: "Minor Issues", value: `${medCount} minor problems found` }] : []),
+                        ...(lowCount > 0  ? [{ icon: "🟡", label: "Small Issues", value: `${lowCount} small issues found` }] : []),
+                        { icon: "⚖️", label: "Overall Risk", value: riskLabel },
+                        ...(result.pii_entities_found > 0 ? [{ icon: "🔒", label: "Personal Info Protected", value: `${result.pii_entities_found} sensitive personal details detected and hidden` }] : []),
                       ];
                       return (
                         <div className="flex flex-col gap-3">
@@ -910,10 +892,19 @@ export default function Home() {
 
               {activeResultTab === "rounds" && (
                 <div>
-                  <h3 className="text-lg font-bold mb-4">Battle Log — Before vs After Each Round</h3>
+                  <div className="mb-5">
+                    <h3 className="text-lg font-bold mb-1">Review Rounds — What Was Found & Fixed</h3>
+                    <p style={{ fontSize: "0.8rem", color: "var(--color-lexai-text-muted)", lineHeight: 1.6 }}>
+                      Each round: our <strong>Problem Finder</strong> attacks the contract, then the <strong>Contract Fixer</strong> patches the issues.
+                      The score shown is what the Problem Finder rated <em>that version</em> of the document —
+                      the final score uses the <strong>best rating achieved</strong> across all rounds.
+                    </p>
+                  </div>
                   <div className="diff-wrap">
                     {result.rounds.map((round, idx) => {
                       const prevScore = idx === 0 ? (result.rounds[0]?.score ?? result.risk_score) : result.rounds[idx - 1].score;
+                      const delta = prevScore - round.score;
+                      const isImprovement = delta > 0;
                       const vulns = round.vulnerabilities ?? [];
                       return (
                         <div key={round.round_number} className="diff-round-block">
@@ -924,8 +915,8 @@ export default function Home() {
                               <span style={{ color: getScoreColor(prevScore), fontWeight: 700 }}>{prevScore}</span>
                               <span style={{ color: "var(--color-lexai-text-muted)" }}>→</span>
                               <span style={{ color: getScoreColor(round.score), fontWeight: 700 }}>{round.score}</span>
-                              <span style={{ color: "var(--color-lexai-success)", fontSize: "0.72rem" }}>
-                                ↓{prevScore - round.score} pts
+                              <span style={{ color: isImprovement ? "var(--color-lexai-success)" : "var(--color-lexai-danger)", fontSize: "0.72rem" }}>
+                                {isImprovement ? `↓${delta} pts ✅` : delta === 0 ? "no change" : `↑${Math.abs(delta)} pts (new issues found)`}
                               </span>
                             </div>
                           </div>
@@ -934,7 +925,7 @@ export default function Home() {
                           <div className="diff-body">
                             {/* Left: vulnerabilities found */}
                             <div className="diff-panel">
-                              <p className="diff-panel-label">🔍 LoopholeHound Found ({vulns.length})</p>
+                              <p className="diff-panel-label">🔍 Contract Problems Found ({vulns.length})</p>
                               {vulns.length > 0 ? (
                                 <ul className="diff-vuln-list">
                                   {vulns.map((v: Vulnerability, i: number) => (
@@ -942,18 +933,18 @@ export default function Home() {
                                       key={i}
                                       className={`diff-vuln-item diff-vuln-${v.severity?.toLowerCase() ?? "medium"}`}
                                     >
-                                      {v.name ?? "Unknown vulnerability"}
+                                      {v.name ?? "Unknown issue"}
                                     </li>
                                   ))}
                                 </ul>
                               ) : (
-                                <p style={{ fontSize: "0.8rem", color: "var(--color-lexai-success)" }}>✓ No vulnerabilities found</p>
+                                <p style={{ fontSize: "0.8rem", color: "var(--color-lexai-success)" }}>✓ No problems found</p>
                               )}
                             </div>
 
                             {/* Right: patches applied */}
                             <div className="diff-panel">
-                              <p className="diff-panel-label">🛡️ DocumentCraft Patched ({round.patches_applied ?? 0})</p>
+                              <p className="diff-panel-label">🛡️ Contract Fixer Patched ({round.patches_applied ?? 0})</p>
                               {round.patch_summary ? (
                                 <p className="diff-panel-content">{round.patch_summary}</p>
                               ) : (

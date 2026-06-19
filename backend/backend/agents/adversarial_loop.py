@@ -175,7 +175,13 @@ class AdversarialLoop:
                 await callback(round_data)
 
         # ── Build final result ────────────────────────────────────────────
-        final_score = rounds[-1].score if rounds else 50
+        # Use the BEST (lowest) score achieved across all rounds, not the last
+        # round's score — because the AI can find new angles in later rounds
+        # that temporarily raise the score even after patching.
+        best_score = min((r.score for r in rounds), default=50)
+        last_score = rounds[-1].score if rounds else 50
+        # The final_score shown to user is the best achieved
+        final_score = best_score
         heat_map = self._build_heat_map(all_vulnerabilities)
         radar = self._calculate_radar(rounds, final_score)
 
