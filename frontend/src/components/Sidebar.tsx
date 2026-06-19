@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getConversations, getProfile, type CSConversation } from "@/lib/store";
 
 // ── Nav item definitions ──────────────────────────────────────────────────────
@@ -37,16 +37,17 @@ const BOTTOM_ITEMS: NavItem[] = [
 
 // ── Sidebar component ─────────────────────────────────────────────────────────
 
-export default function Sidebar() {
+function SidebarInner() {
   const pathname  = usePathname();
   const router    = useRouter();
+  const params    = useSearchParams();
   const [collapsed, setCollapsed] = useState(false);
   const [recentChats, setRecentChats] = useState<CSConversation[]>([]);
   const [chatsOpen, setChatsOpen] = useState(true);
   const [profile, setProfile] = useState<{ name: string } | null>(null);
 
   useEffect(() => {
-    setRecentChats(getConversations().slice(0, 6));
+    setRecentChats(getConversations().filter(c => c.type === "general").slice(0, 6));
     const p = getProfile();
     if (p) setProfile(p);
   }, [pathname]); // refresh on route change
@@ -148,8 +149,8 @@ export default function Sidebar() {
                 {recentChats.map(c => (
                   <button
                     key={c.id}
-                    className={`sidebar-item sub ${isActive(`/chat/${c.id}`) ? "active" : ""}`}
-                    onClick={() => router.push(`/chat/${c.id}`)}
+                    className={`sidebar-item sub ${isActive(`/chat`) && params?.get('id') === c.id ? "active" : ""}`}
+                    onClick={() => router.push(`/chat?id=${c.id}`)}
                     title={c.title}
                   >
                     <span className="sidebar-item-icon" style={{ fontSize: "0.7rem" }}>
@@ -237,5 +238,13 @@ export default function Sidebar() {
         </button>
       </div>
     </aside>
+  );
+}
+
+export default function Sidebar() {
+  return (
+    <Suspense fallback={null}>
+      <SidebarInner />
+    </Suspense>
   );
 }

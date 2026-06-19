@@ -45,10 +45,11 @@ export interface CSUserProfile {
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
 const KEYS = {
-  CONVERSATIONS: "cs_conversations_v1",
-  DOCUMENTS:     "cs_documents_v1",
-  NOTES:         "cs_notes_v1",
-  PROFILE:       "cs_profile_v1",
+  CONVERSATIONS:     "cs_conversations_v1",
+  BIZ_CONVERSATIONS: "cs_biz_conversations_v1",
+  DOCUMENTS:         "cs_documents_v1",
+  NOTES:             "cs_notes_v1",
+  PROFILE:           "cs_profile_v1",
 } as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -103,6 +104,24 @@ export function toggleStarConversation(id: string): void {
     c.id === id ? { ...c, starred: !c.starred } : c
   );
   safeSet(KEYS.CONVERSATIONS, all);
+}
+
+// ── Business Setup Conversations (separate from general chats) ────────────────
+
+export function getBizConversations(): CSConversation[] {
+  return safeGet<CSConversation[]>(KEYS.BIZ_CONVERSATIONS, []);
+}
+
+export function saveBizConversation(conv: CSConversation): void {
+  const all = getBizConversations();
+  const idx = all.findIndex(c => c.id === conv.id);
+  if (idx >= 0) all[idx] = conv;
+  else all.unshift(conv);
+  safeSet(KEYS.BIZ_CONVERSATIONS, all);
+}
+
+export function deleteBizConversation(id: string): void {
+  safeSet(KEYS.BIZ_CONVERSATIONS, getBizConversations().filter(c => c.id !== id));
 }
 
 // ── Documents ─────────────────────────────────────────────────────────────────

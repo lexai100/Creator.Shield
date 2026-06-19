@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { getConversations, type CSConversation } from "@/lib/store";
+import { getBizConversations, type CSConversation } from "@/lib/store";
 import BusinessSetupChat from "@/components/BusinessSetupChat";
 
 export default function BusinessPage() {
@@ -9,9 +9,7 @@ export default function BusinessPage() {
   const [activeSession, setActiveSession] = useState<string | null>(null);
 
   useEffect(() => {
-    const all = getConversations().filter(c => c.type === "general" || c.type === "check");
-    // For now show all recent chats as potential "sessions to continue"
-    setSessions(getConversations().slice(0, 8));
+    setSessions(getBizConversations().slice(0, 8));
   }, []);
 
   return (

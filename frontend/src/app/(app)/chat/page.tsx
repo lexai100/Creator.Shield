@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getConversations, saveConversation, newId, type CSConversation } from "@/lib/store";
-import { businessSetupChat, type BusinessSetupMessage } from "@/lib/api";
 
-// Sample influencer-themed questions (cycling)
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://creatorshield.onrender.com";
+
 const SAMPLE_QUESTIONS = [
   "Can I legally call out a brand that scammed me?",
   "Is my brand deal contract safe to sign?",
@@ -15,20 +15,64 @@ const SAMPLE_QUESTIONS = [
   "How do I protect my content from being used without permission?",
 ];
 
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+async function generalChat(messages: ChatMessage[]): Promise<string> {
+  // Use the business setup endpoint but with a legal-general system context,
+  // or fall back to a simple fetch if a dedicated general endpoint exists.
+  const last = messages[messages.length - 1];
+  const res = await fetch(`${API_BASE}/api/business-setup/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: "general_" + Date.now(),
+      message: last.content,
+      conversation_history: messages.slice(0, -1).map(m => ({
+        role: m.role,
+        content: m.content,
+      })),
+      // Override context to general legal chat
+      context: "general_legal",
+    }),
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const data = await res.json();
+  return data.reply ?? data.message ?? "I couldn't process that. Please try again.";
+}
+
 function ChatInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const [input, setInput] = useState(params.get("q") ?? "");
-  const [messages, setMessages] = useState<BusinessSetupMessage[]>([]);
+  const convIdParam = params.get("id");
+  const qParam = params.get("q");
+
+  const [input, setInput] = useState(qParam ?? "");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sessionId] = useState(() => newId("chat"));
   const [sampleIdx, setSampleIdx] = useState(0);
-  const [convId] = useState(() => newId("conv"));
+  const [convId] = useState(() => convIdParam ?? newId("conv"));
+  const [convTitle, setConvTitle] = useState("New chat");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const autoSentRef = useRef(false);
 
-  // Cycle sample questions every 3 seconds
+  // Load existing conversation messages from localStorage if ?id= is provided
+  useEffect(() => {
+    if (convIdParam) {
+      const saved = getConversations().find(c => c.id === convIdParam);
+      if (saved) setConvTitle(saved.title);
+      // Note: message bodies aren't stored (only metadata) — show a friendly note
+      setMessages([{
+        role: "assistant",
+        content: "Welcome back! I can see your previous session. How can I help you continue?",
+      }]);
+    }
+  }, [convIdParam]);
+
+  // Cycle sample questions
   useEffect(() => {
     const t = setInterval(() => setSampleIdx(i => (i + 1) % SAMPLE_QUESTIONS.length), 3000);
     return () => clearInterval(t);
@@ -45,37 +89,33 @@ function ChatInner() {
     if (ta) { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 140) + "px"; }
   }, [input]);
 
-  // Auto-send if query param is present (from landing page)
+  // Auto-send if ?q= param
   useEffect(() => {
-    const q = params.get("q");
-    if (q && !autoSentRef.current) {
+    if (qParam && !autoSentRef.current) {
       autoSentRef.current = true;
-      sendMessage(q);
+      sendMessage(qParam);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return;
-    const userMsg: BusinessSetupMessage = { role: "user", content: text.trim() };
+    const userMsg: ChatMessage = { role: "user", content: text.trim() };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput("");
     setLoading(true);
 
     try {
-      const res = await businessSetupChat({
-        session_id: sessionId,
-        message: text.trim(),
-        conversation_history: newMessages,
-      });
-      const aiMsg: BusinessSetupMessage = { role: "assistant", content: res.reply };
-      setMessages(prev => [...prev, aiMsg]);
+      const reply = await generalChat(newMessages);
+      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
 
-      // Save conversation to store
+      // Save conversation metadata
+      const title = messages.length === 0 ? text.trim().slice(0, 60) : convTitle;
+      setConvTitle(title);
       const conv: CSConversation = {
         id: convId,
-        title: text.trim().slice(0, 60) || "New chat",
+        title,
         type: "general",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -94,10 +134,9 @@ function ChatInner() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 56px)" }}>
-      {/* Messages area */}
+      {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "24px 0" }}>
         {messages.length === 0 ? (
-          /* Empty state */
           <div style={{ textAlign: "center", padding: "60px 24px" }}>
             <div style={{ fontSize: "3rem", marginBottom: 16 }}>💬</div>
             <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "1.5rem", fontWeight: 800, marginBottom: 8 }}>
@@ -106,22 +145,17 @@ function ChatInner() {
             <p style={{ color: "var(--color-lexai-text-muted)", marginBottom: 32, fontSize: "0.9rem" }}>
               Ask me anything about contracts, creator rights, or legal protection.
             </p>
-            {/* Cycling sample questions */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", maxWidth: 600, margin: "0 auto 32px" }}>
               {[SAMPLE_QUESTIONS[sampleIdx], SAMPLE_QUESTIONS[(sampleIdx + 1) % SAMPLE_QUESTIONS.length], SAMPLE_QUESTIONS[(sampleIdx + 2) % SAMPLE_QUESTIONS.length]].map((q, i) => (
                 <button
                   key={`${sampleIdx}-${i}`}
                   onClick={() => sendMessage(q)}
                   style={{
-                    padding: "10px 16px",
-                    borderRadius: 24,
+                    padding: "10px 16px", borderRadius: 24,
                     border: "1px solid var(--color-lexai-border)",
                     background: "var(--color-lexai-surface-2)",
-                    color: "var(--color-lexai-text)",
-                    fontSize: "0.82rem",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                    animation: "fadeIn 0.4s ease",
+                    color: "var(--color-lexai-text)", fontSize: "0.82rem",
+                    cursor: "pointer", transition: "all 0.2s",
                   }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--color-lexai-accent)"; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--color-lexai-border)"; }}
@@ -130,7 +164,6 @@ function ChatInner() {
                 </button>
               ))}
             </div>
-            {/* Quick-action shortcuts */}
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
               {[
                 { icon: "🛡️", label: "Check a Contract", href: "/check" },
@@ -147,19 +180,10 @@ function ChatInner() {
                     border: "1px solid var(--color-lexai-border)",
                     background: "transparent",
                     color: "var(--color-lexai-text-muted)",
-                    fontSize: "0.82rem", cursor: "pointer",
-                    transition: "all 0.2s",
+                    fontSize: "0.82rem", cursor: "pointer", transition: "all 0.2s",
                   }}
-                  onMouseEnter={e => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.background = "var(--color-lexai-surface-2)";
-                    el.style.color = "var(--color-lexai-text)";
-                  }}
-                  onMouseLeave={e => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.background = "transparent";
-                    el.style.color = "var(--color-lexai-text-muted)";
-                  }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = "var(--color-lexai-surface-2)"; el.style.color = "var(--color-lexai-text)"; }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = "transparent"; el.style.color = "var(--color-lexai-text-muted)"; }}
                 >
                   {a.icon} {a.label}
                 </button>
@@ -169,21 +193,12 @@ function ChatInner() {
         ) : (
           <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 24px" }}>
             {messages.map((msg, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  marginBottom: 20,
-                  flexDirection: msg.role === "user" ? "row-reverse" : "row",
-                }}
-              >
+              <div key={i} style={{ display: "flex", gap: 12, marginBottom: 20, flexDirection: msg.role === "user" ? "row-reverse" : "row" }}>
                 <div style={{
                   width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
                   background: msg.role === "user" ? "rgba(212,130,26,0.15)" : "rgba(255,255,255,0.05)",
                   border: `1.5px solid ${msg.role === "user" ? "var(--color-lexai-accent)" : "var(--color-lexai-border)"}`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "0.9rem",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem",
                 }}>
                   {msg.role === "user" ? "👤" : "🛡️"}
                 </div>
@@ -192,11 +207,8 @@ function ChatInner() {
                   background: msg.role === "user" ? "rgba(212,130,26,0.08)" : "var(--color-lexai-surface-2)",
                   border: `1px solid ${msg.role === "user" ? "rgba(212,130,26,0.2)" : "var(--color-lexai-border)"}`,
                   borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                  padding: "12px 16px",
-                  fontSize: "0.88rem",
-                  lineHeight: 1.7,
-                  color: "var(--color-lexai-text)",
-                  whiteSpace: "pre-wrap",
+                  padding: "12px 16px", fontSize: "0.88rem", lineHeight: 1.7,
+                  color: "var(--color-lexai-text)", whiteSpace: "pre-wrap",
                 }}>
                   {msg.content}
                 </div>
@@ -217,12 +229,8 @@ function ChatInner() {
         )}
       </div>
 
-      {/* Input bar */}
-      <div style={{
-        padding: "16px 24px 20px",
-        borderTop: "1px solid var(--color-lexai-border)",
-        background: "var(--color-lexai-surface)",
-      }}>
+      {/* Input */}
+      <div style={{ padding: "16px 24px 20px", borderTop: "1px solid var(--color-lexai-border)", background: "var(--color-lexai-surface)" }}>
         <form onSubmit={handleSubmit} style={{ maxWidth: 720, margin: "0 auto" }}>
           <div style={{ position: "relative" }}>
             <textarea
@@ -234,17 +242,11 @@ function ChatInner() {
               rows={1}
               disabled={loading}
               style={{
-                width: "100%",
-                background: "var(--color-lexai-surface-2)",
-                border: "1.5px solid var(--color-lexai-border)",
-                borderRadius: 14,
-                padding: "12px 54px 12px 16px",
-                fontSize: "0.9rem",
-                color: "var(--color-lexai-text)",
-                resize: "none",
-                outline: "none",
-                transition: "border-color 0.2s",
-                fontFamily: "var(--font-body)",
+                width: "100%", background: "var(--color-lexai-surface-2)",
+                border: "1.5px solid var(--color-lexai-border)", borderRadius: 14,
+                padding: "12px 54px 12px 16px", fontSize: "0.9rem",
+                color: "var(--color-lexai-text)", resize: "none", outline: "none",
+                transition: "border-color 0.2s", fontFamily: "var(--font-body)",
               }}
               onFocus={e => { (e.target as HTMLElement).style.borderColor = "var(--color-lexai-accent)"; }}
               onBlur={e => { (e.target as HTMLElement).style.borderColor = "var(--color-lexai-border)"; }}
@@ -258,8 +260,7 @@ function ChatInner() {
                 background: input.trim() && !loading ? "var(--color-lexai-accent)" : "var(--color-lexai-surface)",
                 border: "none", cursor: input.trim() && !loading ? "pointer" : "not-allowed",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: "1rem", color: "#0d0b08",
-                transition: "all 0.2s",
+                fontSize: "1rem", color: "#0d0b08", transition: "all 0.2s",
               }}
             >
               ↑
