@@ -897,6 +897,65 @@ async def business_setup_chat(
         raise HTTPException(500, f"Business setup chat failed: {exc}")
 
 
+# ── General Chat ───────────────────────────────────────────────────────────────
+
+from pydantic import BaseModel as _BaseModel
+
+class GeneralChatMessage(_BaseModel):
+    role: str
+    content: str
+
+class GeneralChatRequest(_BaseModel):
+    messages: list[GeneralChatMessage]
+
+class GeneralChatResponse(_BaseModel):
+    reply: str
+
+GENERAL_CHAT_SYSTEM = """You are **CreatorShield AI** — a knowledgeable legal assistant specialising in Indian creator economy law.
+
+You help Indian content creators (YouTubers, Instagrammers, podcasters, artists) understand their rights, review contracts, and protect their business.
+
+## Your expertise:
+- Indian Contract Act, 1872
+- Copyright Act, 1957 (creator IP rights)
+- Information Technology Act, 2000
+- Consumer Protection Act, 2019
+- GST implications for creators
+- Brand deal and sponsorship agreements
+- Creator platform terms (YouTube, Instagram, etc.)
+
+## Style:
+- Be warm, clear, and direct — creators are not lawyers
+- Use simple language, avoid legal jargon unless you explain it
+- Format with bullet points or numbered steps when listing things
+- Always mention when something needs a real lawyer's advice
+- Keep replies concise but complete"""
+
+@app.post("/api/chat", tags=["chat"])
+async def general_chat(request: GeneralChatRequest) -> GeneralChatResponse:
+    """
+    POST /api/chat
+    General legal assistant chat for Indian content creators.
+    Stateless — client sends full message history each turn.
+    """
+    from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+    from backend.services.llm_client import invoke_with_fallback
+
+    lc_messages = [SystemMessage(content=GENERAL_CHAT_SYSTEM)]
+    for m in request.messages[-12:]:  # last 12 messages for context
+        if m.role == "user":
+            lc_messages.append(HumanMessage(content=m.content))
+        elif m.role == "assistant":
+            lc_messages.append(AIMessage(content=m.content))
+
+    try:
+        response = await invoke_with_fallback(lc_messages, settings, temperature=0.4, max_tokens=1024)
+        return GeneralChatResponse(reply=response.content)
+    except Exception as exc:
+        logger.exception("General chat failed: %s", exc)
+        raise HTTPException(500, f"Chat failed: {exc}")
+
+
 # ── WebSocket ──────────────────────────────────────────────────────────────────
 
 @app.websocket("/api/ws/{task_id}")

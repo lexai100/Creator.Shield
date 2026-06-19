@@ -26,10 +26,12 @@ function formatAIReply(text: string) {
     const stepMatch = trimmed.match(/^(\d+)[.)]\s+(.+)/);
     if (stepMatch) {
       stepCounter++;
+      // strip any ** bold markers from the step text
+      const stepText = stepMatch[2].replace(/\*\*([^*]+)\*\*/g, '$1');
       elements.push(
         <div key={`step-${i}`} className="biz-step">
           <span className="biz-step-num">{stepCounter}</span>
-          <span className="biz-step-text">{stepMatch[2]}</span>
+          <span className="biz-step-text">{stepText}</span>
         </div>
       );
       return;

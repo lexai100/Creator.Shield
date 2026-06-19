@@ -21,26 +21,14 @@ interface ChatMessage {
 }
 
 async function generalChat(messages: ChatMessage[]): Promise<string> {
-  // Use the business setup endpoint but with a legal-general system context,
-  // or fall back to a simple fetch if a dedicated general endpoint exists.
-  const last = messages[messages.length - 1];
-  const res = await fetch(`${API_BASE}/api/business-setup/chat`, {
+  const res = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      session_id: "general_" + Date.now(),
-      message: last.content,
-      conversation_history: messages.slice(0, -1).map(m => ({
-        role: m.role,
-        content: m.content,
-      })),
-      // Override context to general legal chat
-      context: "general_legal",
-    }),
+    body: JSON.stringify({ messages }),
   });
   if (!res.ok) throw new Error(`API error ${res.status}`);
   const data = await res.json();
-  return data.reply ?? data.message ?? "I couldn't process that. Please try again.";
+  return data.reply ?? "I couldn't process that. Please try again.";
 }
 
 function ChatInner() {
@@ -50,27 +38,38 @@ function ChatInner() {
   const qParam = params.get("q");
 
   const [input, setInput] = useState(qParam ?? "");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [sampleIdx, setSampleIdx] = useState(0);
   const [convId] = useState(() => convIdParam ?? newId("conv"));
   const [convTitle, setConvTitle] = useState("New chat");
+  const STORAGE_KEY = `cs_chat_msgs_${convId}`;
+
+  // Restore messages from sessionStorage on mount
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const autoSentRef = useRef(false);
 
-  // Load existing conversation messages from localStorage if ?id= is provided
+  // Load existing conversation on ?id= param
   useEffect(() => {
     if (convIdParam) {
       const saved = getConversations().find(c => c.id === convIdParam);
       if (saved) setConvTitle(saved.title);
-      // Note: message bodies aren't stored (only metadata) — show a friendly note
-      setMessages([{
-        role: "assistant",
-        content: "Welcome back! I can see your previous session. How can I help you continue?",
-      }]);
     }
   }, [convIdParam]);
+
+  // Persist messages to sessionStorage whenever they change
+  useEffect(() => {
+    if (typeof window !== "undefined" && messages.length > 0) {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    }
+  }, [messages, STORAGE_KEY]);
 
   // Cycle sample questions
   useEffect(() => {

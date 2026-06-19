@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getConversations, getProfile, type CSConversation } from "@/lib/store";
+import { getConversations, deleteConversation, getProfile, type CSConversation } from "@/lib/store";
 
 // ── Nav item definitions ──────────────────────────────────────────────────────
 
@@ -147,22 +147,48 @@ function SidebarInner() {
             {chatsOpen && recentChats.length > 0 && (
               <div style={{ marginBottom: 4 }}>
                 {recentChats.map(c => (
-                  <button
+                  <div
                     key={c.id}
-                    className={`sidebar-item sub ${isActive(`/chat`) && params?.get('id') === c.id ? "active" : ""}`}
-                    onClick={() => router.push(`/chat?id=${c.id}`)}
-                    title={c.title}
+                    style={{ position: "relative", display: "flex", alignItems: "center" }}
+                    className="sidebar-chat-row"
                   >
-                    <span className="sidebar-item-icon" style={{ fontSize: "0.7rem" }}>
-                      {c.type === "check" ? "🛡️" : c.type === "generate" ? "✍️" : "💬"}
-                    </span>
-                    <span className="sidebar-item-label" style={{
-                      overflow: "hidden", textOverflow: "ellipsis",
-                      whiteSpace: "nowrap", fontSize: "0.78rem",
-                    }}>
-                      {c.title}
-                    </span>
-                  </button>
+                    <button
+                      className={`sidebar-item sub ${isActive(`/chat`) && params?.get('id') === c.id ? "active" : ""}`}
+                      onClick={() => router.push(`/chat?id=${c.id}`)}
+                      title={c.title}
+                      style={{ flex: 1, paddingRight: 28 }}
+                    >
+                      <span className="sidebar-item-icon" style={{ fontSize: "0.7rem" }}>
+                        {c.type === "check" ? "🛡️" : c.type === "generate" ? "✍️" : "💬"}
+                      </span>
+                      <span className="sidebar-item-label" style={{
+                        overflow: "hidden", textOverflow: "ellipsis",
+                        whiteSpace: "nowrap", fontSize: "0.78rem",
+                      }}>
+                        {c.title}
+                      </span>
+                    </button>
+                    <button
+                      className="sidebar-chat-delete"
+                      title="Delete chat"
+                      onClick={e => {
+                        e.stopPropagation();
+                        deleteConversation(c.id);
+                        setRecentChats(prev => prev.filter(x => x.id !== c.id));
+                      }}
+                      style={{
+                        position: "absolute", right: 4,
+                        width: 20, height: 20, borderRadius: 6,
+                        border: "none", background: "transparent",
+                        color: "var(--color-lexai-text-muted)",
+                        cursor: "pointer", fontSize: "0.75rem",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        opacity: 0, transition: "opacity 0.15s",
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 ))}
                 <button
                   className="sidebar-item sub"
