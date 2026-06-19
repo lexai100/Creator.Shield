@@ -573,11 +573,11 @@ export default function Home() {
             <h3 className="text-2xl font-bold mb-2 font-[var(--font-heading)]">
               {currentRound > 0 ? (
                 <>
-                  Adversarial Round{" "}
+                  Review Round{" "}
                   <span className="text-[var(--color-lexai-accent)]">{currentRound}</span> / 3
                 </>
               ) : (
-                "Initializing Analysis..."
+                "Starting your contract check…"
               )}
             </h3>
             <p className="text-[var(--color-lexai-text-muted)] mb-6">{statusText}</p>
@@ -610,7 +610,7 @@ export default function Home() {
                       <div className="text-left">
                         <p className="font-semibold text-sm">Round {round.round_number}</p>
                         <p className="text-xs text-[var(--color-lexai-text-muted)]">
-                          {round.vulnerabilities_found} vulnerabilities found
+                          {round.vulnerabilities_found} problems spotted
                         </p>
                       </div>
                     </div>
@@ -698,9 +698,9 @@ export default function Home() {
             {/* Score hero */}
             <div className="glass-card p-8 mb-6 text-center glow-accent">
               <div className="flex items-center justify-center gap-8 mb-6">
-                {/* Initial score */}
+                {/* Before score */}
                 <div className="text-center">
-                  <p className="text-sm text-[var(--color-lexai-text-muted)] mb-2">Initial Risk</p>
+                  <p className="text-sm text-[var(--color-lexai-text-muted)] mb-2">Before</p>
                   <div
                     className="text-4xl font-extrabold"
                  style={{ color: getScoreColor(result.rounds[0]?.score ?? result.risk_score) }}
@@ -712,9 +712,9 @@ export default function Home() {
                 {/* Arrow */}
                 <div className="text-3xl text-[var(--color-lexai-accent)]">→</div>
 
-                {/* Final score */}
+                {/* After score */}
                 <div className="text-center">
-                  <p className="text-sm text-[var(--color-lexai-text-muted)] mb-2">Final Risk</p>
+                  <p className="text-sm text-[var(--color-lexai-text-muted)] mb-2">After (Best)</p>
                   <div
                     className="text-5xl font-extrabold"
                     style={{ color: getScoreColor(result.risk_score) }}
@@ -725,13 +725,13 @@ export default function Home() {
               </div>
 
               <p className="text-lg text-[var(--color-lexai-text-muted)]">
-                Hardened through{" "}
+                Checked across{" "}
                 <span className="text-white font-bold">{result.rounds.length}</span>{" "}
-                adversarial rounds
+                review rounds
               </p>
               {result.pii_entities_found > 0 && (
                 <p className="text-sm text-[var(--color-lexai-info)] mt-2">
-                  🔒 {result.pii_entities_found} PII entities detected & protected
+                  🔒 {result.pii_entities_found} personal details detected & protected
                 </p>
               )}
             </div>
@@ -756,11 +756,11 @@ export default function Home() {
                   }`}
                 >
                   {tab === "overview" && "Summary"}
-                  {tab === "vulns" && "Contract Problems"}
-                  {tab === "document" && "Fixed Contract"}
-                  {tab === "rounds" && "Review Rounds"}
+                  {tab === "vulns" && "Problems Found"}
+                  {tab === "document" && "Finalized Contract"}
+                  {tab === "rounds" && "Review Process"}
                   {tab === "caselaw" && "⚖️ Relevant Cases"}
-                  {tab === "negotiate" && "📧 Negotiate"}
+                  {tab === "negotiate" && "📧 Suggest Changes"}
                 </button>
               ))}
             </div>
@@ -772,7 +772,7 @@ export default function Home() {
                 {/* ── Point-wise Analysis Summary ── */}
                   <div className="mb-6">
                     <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                      📋 Analysis Summary
+                      📋 Summary of Findings
                     </h3>
                     {(() => {
                       const initScore = result.rounds[0]?.score ?? result.risk_score;
@@ -788,19 +788,19 @@ export default function Home() {
                       const riskLabel = finalScore < 15 ? "✅ LOW — Safe to use"
                         : finalScore < 30 ? "⚠️ MODERATE — Review before signing"
                         : finalScore < 50 ? "🔶 ELEVATED — Significant issues found"
-                        : finalScore < 70 ? "🔴 HIGH — Substantial vulnerabilities"
+                        : finalScore < 70 ? "🔴 HIGH — Substantial risks"
                         : "🚨 CRITICAL — Do NOT sign without professional review";
                       const summaryPoints = [
-                        { icon: "🔁", label: "Review Rounds", value: `${result.rounds.length} rounds of checking completed` },
-                        { icon: "📉", label: "How Much We Fixed", value: improvement > 0 ? `Risk score dropped by ${improvement} pts (${initScore} → ${finalScore})` : `Risk score: ${finalScore}/100 (best score across all rounds)` },
-                        { icon: "🐛", label: "Total Problems Found", value: `${totalVulns} contract issues spotted across all rounds` },
-                        { icon: "🛡️", label: "Issues Fixed", value: `${totalPatches} clauses strengthened by Contract Fixer` },
+                        { icon: "🔁", label: "Review Rounds", value: `${result.rounds.length} rounds of checks finished` },
+                        { icon: "📉", label: "Overall Improvement", value: improvement > 0 ? `Risk score dropped by ${improvement} pts (${initScore} → ${finalScore})` : `Risk score: ${finalScore}/100 (best performance)` },
+                        { icon: "🐛", label: "Total Issues Spotted", value: `${totalVulns} contract issues identified` },
+                        { icon: "🛡️", label: "Changes Made", value: `${totalPatches} clauses improved by our editor` },
                         ...(critCount > 0 ? [{ icon: "💀", label: "Critical Issues", value: `${critCount} critical problems — must fix before signing` }] : []),
                         ...(highCount > 0 ? [{ icon: "🔴", label: "Serious Issues", value: `${highCount} serious problems found` }] : []),
                         ...(medCount > 0  ? [{ icon: "🟠", label: "Minor Issues", value: `${medCount} minor problems found` }] : []),
                         ...(lowCount > 0  ? [{ icon: "🟡", label: "Small Issues", value: `${lowCount} small issues found` }] : []),
-                        { icon: "⚖️", label: "Overall Risk", value: riskLabel },
-                        ...(result.pii_entities_found > 0 ? [{ icon: "🔒", label: "Personal Info Protected", value: `${result.pii_entities_found} sensitive personal details detected and hidden` }] : []),
+                        { icon: "⚖️", label: "Overall Risk Level", value: riskLabel },
+                        ...(result.pii_entities_found > 0 ? [{ icon: "🔒", label: "Privacy Protection", value: `${result.pii_entities_found} personal details hidden` }] : []),
                       ];
                       return (
                         <div className="flex flex-col gap-3">
@@ -821,7 +821,7 @@ export default function Home() {
                   {/* Contract Health Radar */}
                   {result.radar && (
                     <div className="mt-8">
-                      <h4 className="text-md font-bold mb-4">Contract Health Breakdown</h4>
+                      <h4 className="text-md font-bold mb-4">Contract Strengths Overview</h4>
                       <ComplianceRadar scores={result.radar as unknown as Record<string, number>} />
                     </div>
                   )}
@@ -831,18 +831,18 @@ export default function Home() {
               {activeResultTab === "vulns" && (
                 <div>
                   <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                    <h3 className="text-lg font-bold">Vulnerabilities Found</h3>
+                    <h3 className="text-lg font-bold">Problems Found</h3>
                   </div>
 
                 {(() => {
                     const allVulns = result.rounds.flatMap(r => r.vulnerabilities ?? []);
                     return (
                       <>
-                        {/* Loophole Network Graph */}
+                        {/* Vulnerability Network */}
                         {allVulns.length > 0 && (
                           <div className="glass-card p-4 mb-6">
                             <h4 className="text-sm font-bold mb-3 text-[var(--color-lexai-text-muted)] uppercase tracking-wider">
-                              🕸️ Vulnerability Network
+                              🕸️ Issue Map
                             </h4>
                             <LoopholeNetwork
                               vulnerabilities={allVulns.map((v: Vulnerability, i: number) => ({
@@ -869,7 +869,7 @@ export default function Home() {
                                 </div>
                                 {vuln.affected_clause && (
                                   <p className="text-xs text-[var(--color-lexai-text-muted)] mb-2">
-                                    📍 Affected Clause: <strong>{vuln.affected_clause}</strong>
+                                    📍 Location: <strong>{vuln.affected_clause}</strong>
                                   </p>
                                 )}
                                 <p className="text-sm text-[var(--color-lexai-text-muted)] leading-relaxed mb-3">
@@ -877,13 +877,13 @@ export default function Home() {
                                 </p>
                                 {vuln.exploitation_scenario && (
                                   <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 mb-3">
-                                    <p className="text-xs font-semibold text-red-400 mb-1">⚠️ Exploitation Scenario</p>
+                                    <p className="text-xs font-semibold text-red-400 mb-1">⚠️ Possible Consequence</p>
                                     <p className="text-xs text-[var(--color-lexai-text-muted)] leading-relaxed">{vuln.exploitation_scenario}</p>
                                   </div>
                                 )}
                                 {vuln.suggested_fix && (
                                   <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-3">
-                                    <p className="text-xs font-semibold text-green-400 mb-1">✅ Suggested Fix</p>
+                                    <p className="text-xs font-semibold text-green-400 mb-1">✅ Recommended Change</p>
                                     <p className="text-xs text-[var(--color-lexai-text-muted)] leading-relaxed">{vuln.suggested_fix}</p>
                                   </div>
                                 )}
@@ -893,8 +893,8 @@ export default function Home() {
                         ) : (
                           <div className="text-center py-12">
                             <p className="text-5xl mb-4">✅</p>
-                            <p className="text-lg font-semibold text-[var(--color-lexai-success)]">No Vulnerabilities Found</p>
-                            <p className="text-sm text-[var(--color-lexai-text-muted)] mt-2">This document passed all adversarial checks.</p>
+                            <p className="text-lg font-semibold text-[var(--color-lexai-success)]">No Problems Found ✅</p>
+                            <p className="text-sm text-[var(--color-lexai-text-muted)] mt-2">This contract passed all our checks — great news!</p>
                           </div>
                         )}
                       </>
