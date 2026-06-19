@@ -311,42 +311,44 @@ export default function Home() {
 
   return (
     <main className="min-h-screen relative">
-      {/* ── Hero / Navbar ──────────────────────────────────────────── */}
-      <nav className="flex items-center justify-between px-8 py-5 border-b border-[var(--color-lexai-border)]">
+      {/* Animated warm background */}
+      <div className="lexai-gradient-bg" />
+
+      {/* ── Navbar ────────────────────────────────────────────────── */}
+      <nav className="cs-navbar flex items-center justify-between px-8 py-4">
         <div className="flex items-center gap-3">
           <div className="relative">
             <ShieldIcon className="w-8 h-8 text-[var(--color-lexai-accent)]" />
-            <SwordIcon className="w-4 h-4 text-[var(--color-lexai-warning)] absolute -bottom-1 -right-1" />
+            <SwordIcon className="w-4 h-4 absolute -bottom-1 -right-1 text-[var(--color-lexai-accent-glow)]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold font-[var(--font-heading)] tracking-tight">
-              Creator<span className="text-[var(--color-lexai-accent)]">Shield</span>
+            <h1 style={{ fontFamily: "var(--font-heading)", fontSize: "1.35rem", fontWeight: 900, letterSpacing: "-0.01em", margin: 0 }}>
+              Creator<span style={{ color: "var(--color-lexai-accent)" }}>Shield</span>
             </h1>
-            <p className="text-xs text-[var(--color-lexai-text-muted)]">
+            <p style={{ fontSize: "0.72rem", color: "var(--color-lexai-text-muted)", margin: 0 }}>
               AI Contract Protection &amp; Business Setup for Creators
             </p>
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-xs text-[var(--color-lexai-success)] flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[var(--color-lexai-success)] animate-pulse" />
-            Backend Connected
+          <span className="flex items-center gap-1.5" style={{ fontSize: "0.75rem", color: "var(--color-lexai-success)" }}>
+            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--color-lexai-success)" }} />
+            AI Ready
           </span>
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-6 py-10">
         {/* ── Mode Tabs ─────────────────────────────────────────────── */}
         {!isProcessing && !result && (
           <>
             <div className="text-center mb-10">
-              <h2 className="text-4xl font-bold font-[var(--font-heading)] mb-3">
-                <span className="bg-gradient-to-r from-[var(--color-lexai-accent)] to-purple-400 bg-clip-text text-transparent">
-                  Adversarial Document Hardening
-                </span>
+              <h2 className="cs-hero-title mb-4">
+                Protect Your Creator Business
               </h2>
-              <p className="text-[var(--color-lexai-text-muted)] text-lg max-w-2xl mx-auto">
-                Two AI agents battle each other — one builds, one attacks — to make your legal documents bulletproof.
+              <p className="cs-hero-subtitle mx-auto">
+                Two AI agents work together — one finds every loophole, one fixes them —
+                so your contracts are airtight before you sign.
               </p>
             </div>
 
@@ -816,10 +818,10 @@ export default function Home() {
                     })()}
                   </div>
 
-                  {/* Recharts Compliance Radar */}
+                  {/* Contract Health Radar */}
                   {result.radar && (
                     <div className="mt-8">
-                      <h4 className="text-md font-bold mb-4">Compliance Radar</h4>
+                      <h4 className="text-md font-bold mb-4">Contract Health Breakdown</h4>
                       <ComplianceRadar scores={result.radar as unknown as Record<string, number>} />
                     </div>
                   )}
