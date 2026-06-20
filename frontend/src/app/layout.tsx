@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import SupabaseProvider from "@/components/SupabaseProvider";
 
 export const metadata: Metadata = {
   title: "LexAI — Adversarial Legal Intelligence",
@@ -35,8 +36,10 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <div className="lexai-gradient-bg" />
-        {children}
+        <SupabaseProvider>
+          <div className="lexai-gradient-bg" />
+          {children}
+        </SupabaseProvider>
       </body>
     </html>
   );

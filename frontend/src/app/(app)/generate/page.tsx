@@ -3,24 +3,39 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { generateDocument, connectWebSocket, getTemplates, type AnalysisResult, type WSMessage, type TemplateInfo } from "@/lib/api";
-import { saveConversation, newId } from "@/lib/store";
+import { saveConversation, saveGeneratedContract, newId } from "@/lib/db";
+import { usePageState } from "@/hooks/usePageState";
 
 export default function GeneratePage() {
   const router = useRouter();
   const [templates, setTemplates]     = useState<TemplateInfo[]>([]);
-  const [selectedType, setSelectedType] = useState("FREELANCE");
-  const [description, setDescription] = useState("");
-  const [partyA, setPartyA]           = useState("");
-  const [partyB, setPartyB]           = useState("");
-  const [location, setLocation]       = useState("");
+
+  // Persisted form + result state
+  const [ps, setPs, clearPs] = usePageState("generate", {
+    selectedType: "FREELANCE",
+    description: "",
+    partyA: "",
+    partyB: "",
+    location: "",
+    result: null as AnalysisResult | null,
+    convId: newId("conv"),
+  });
+
+  const selectedType = ps.selectedType;
+  const description  = ps.description;
+  const partyA       = ps.partyA;
+  const partyB       = ps.partyB;
+  const location     = ps.location;
+  const result       = ps.result;
+
+  // Transient
   const [isGenerating, setIsGenerating] = useState(false);
-  const [progress, setProgress]       = useState(0);
-  const [statusText, setStatusText]   = useState("");
-  const [result, setResult]           = useState<AnalysisResult | null>(null);
+  const [progress, setProgress]       = useState(result ? 100 : 0);
+  const [statusText, setStatusText]   = useState(result ? "Done!" : "");
   const [error, setError]             = useState<string | null>(null);
-  const [askCheck, setAskCheck]       = useState(false);
+  const [askCheck, setAskCheck]       = useState(!!result);
   const wsRef = useRef<WebSocket | null>(null);
-  const convId = useRef(newId("conv"));
+  const convId = useRef(ps.convId);
 
   useEffect(() => {
     getTemplates().then(setTemplates).catch(() => {});
@@ -31,31 +46,32 @@ export default function GeneratePage() {
       setProgress(msg.progress);
       setStatusText(`Drafting your contract… (${Math.round(msg.progress)}%)`);
     } else if (msg.type === "completed") {
-      setResult(msg.result);
+      setPs({ result: msg.result });
       setIsGenerating(false);
       setProgress(100);
       setStatusText("Done!");
-      setAskCheck(true); // Prompt user to check the contract
+      setAskCheck(true);
       saveConversation({
-        id: convId.current,
-        title: `${selectedType} Contract`,
-        type: "generate",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        starred: false,
-        messageCount: 1,
+        id: convId.current, title: `${selectedType} Contract`,
+        type: "generate", createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(), starred: false, messageCount: 1,
+      });
+      saveGeneratedContract({
+        documentType: selectedType,
+        description,
+        documentText: msg.result?.final_document ?? "",
       });
     } else if (msg.type === "error") {
       setError(msg.error ?? "Generation failed");
       setIsGenerating(false);
     }
-  }, [selectedType]);
+  }, [selectedType, description]);
 
   const handleGenerate = async () => {
     if (!description.trim()) return;
     setIsGenerating(true);
     setProgress(0);
-    setResult(null);
+    setPs({ result: null, convId: newId("conv") });
     setError(null);
     setAskCheck(false);
     setStatusText("Starting contract generation…");
@@ -97,8 +113,8 @@ export default function GeneratePage() {
   };
 
   const handleReset = () => {
-    setResult(null); setError(null); setAskCheck(false);
-    setProgress(0); setDescription(""); setPartyA(""); setPartyB(""); setLocation("");
+    setPs({ result: null, description: "", partyA: "", partyB: "", location: "", convId: newId("conv") });
+    setError(null); setAskCheck(false); setProgress(0);
     convId.current = newId("conv");
   };
 
@@ -128,22 +144,22 @@ export default function GeneratePage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }}>
             <div>
               <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--color-lexai-text-muted)", display: "block", marginBottom: 8 }}>Contract Type</label>
-              <select className="lexai-input" value={selectedType} onChange={e => setSelectedType(e.target.value)}>
+              <select className="lexai-input" value={selectedType} onChange={e => setPs({ selectedType: e.target.value })}>
                 {(templates.length > 0 ? templates.map(t => ({ value: t.document_type, label: t.title })) : FALLBACK_TYPES)
                   .map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
               <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--color-lexai-text-muted)", display: "block", marginBottom: 8 }}>Location / Jurisdiction</label>
-              <input className="lexai-input" placeholder="e.g. Mumbai, Maharashtra" value={location} onChange={e => setLocation(e.target.value)} />
+              <input className="lexai-input" placeholder="e.g. Mumbai, Maharashtra" value={location} onChange={e => setPs({ location: e.target.value })} />
             </div>
             <div>
               <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--color-lexai-text-muted)", display: "block", marginBottom: 8 }}>First Party (You / Your Company)</label>
-              <input className="lexai-input" placeholder="e.g. Ananya Singh" value={partyA} onChange={e => setPartyA(e.target.value)} />
+              <input className="lexai-input" placeholder="e.g. Ananya Singh" value={partyA} onChange={e => setPs({ partyA: e.target.value })} />
             </div>
             <div>
               <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--color-lexai-text-muted)", display: "block", marginBottom: 8 }}>Second Party (Client / Brand)</label>
-              <input className="lexai-input" placeholder="e.g. BrandX India Pvt Ltd" value={partyB} onChange={e => setPartyB(e.target.value)} />
+              <input className="lexai-input" placeholder="e.g. BrandX India Pvt Ltd" value={partyB} onChange={e => setPs({ partyB: e.target.value })} />
             </div>
           </div>
 
@@ -155,7 +171,7 @@ export default function GeneratePage() {
               className="lexai-textarea"
               placeholder={`e.g. I'm an Instagram influencer with 200k followers. BrandX wants me to post 3 reels and 5 stories over one month promoting their skincare product. Payment is ₹80,000. They want a 30-day exclusivity on skincare brands. I need strong protection on payment terms and content rights.`}
               value={description}
-              onChange={e => setDescription(e.target.value)}
+              onChange={e => setPs({ description: e.target.value })}
               rows={6}
               style={{ marginBottom: 0 }}
             />

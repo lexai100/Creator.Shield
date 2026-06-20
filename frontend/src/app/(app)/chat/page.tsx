@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getConversations, saveConversation, newId, type CSConversation } from "@/lib/store";
+import { getMessages, saveMessage, saveConversation, newId, type CSConversation } from "@/lib/db";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://creatorshield.onrender.com";
 
@@ -56,12 +56,14 @@ function ChatInner() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const autoSentRef = useRef(false);
 
-  // Load existing conversation on ?id= param
+  // Load messages from Supabase on mount (when returning to an existing conv)
   useEffect(() => {
-    if (convIdParam) {
-      const saved = getConversations().find(c => c.id === convIdParam);
-      if (saved) setConvTitle(saved.title);
-    }
+    if (!convIdParam) return;
+    getMessages(convIdParam).then(msgs => {
+      if (msgs.length > 0) {
+        setMessages(msgs.map(m => ({ role: m.role, content: m.content })));
+      }
+    });
   }, [convIdParam]);
 
   // Persist messages to sessionStorage whenever they change
@@ -107,21 +109,22 @@ function ChatInner() {
 
     try {
       const reply = await generalChat(newMessages);
-      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
+      const aiMsg: ChatMessage = { role: "assistant", content: reply };
+      setMessages(prev => [...prev, aiMsg]);
 
-      // Save conversation metadata
+      // Save conversation metadata + messages to Supabase
       const title = messages.length === 0 ? text.trim().slice(0, 60) : convTitle;
       setConvTitle(title);
       const conv: CSConversation = {
-        id: convId,
-        title,
-        type: "general",
+        id: convId, title, type: "general",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        starred: false,
-        messageCount: newMessages.length + 1,
+        starred: false, messageCount: newMessages.length + 1,
       };
-      saveConversation(conv);
+      await saveConversation(conv);
+      // Save user message + AI reply
+      await saveMessage({ conversationId: convId, role: "user", content: text.trim() });
+      await saveMessage({ conversationId: convId, role: "assistant", content: reply });
     } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "Sorry, I ran into an issue. Please try again!" }]);
     } finally {

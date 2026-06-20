@@ -10,7 +10,8 @@ import VoiceInterface from "@/components/VoiceInterface";
 import ComplianceRadar from "@/components/ComplianceRadar";
 import LoopholeNetwork from "@/components/LoopholeNetwork";
 import NegotiateTab from "@/components/NegotiateTab";
-import { saveConversation, saveDocument, newId } from "@/lib/store";
+import { saveConversation, saveContractResult, newId } from "@/lib/db";
+import { usePageState } from "@/hooks/usePageState";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,30 +25,43 @@ type ResultTab = "overview" | "vulns" | "document" | "rounds" | "caselaw" | "neg
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CheckPage() {
+  // ── Persisted state (survives refresh + navigation) ────────────────────────
+  const [ps, setPs, clearPs] = usePageState("check", {
+    textInput: "",
+    result: null as AnalysisResult | null,
+    rounds: [] as AdversarialRound[],
+    activeTab: "overview" as ResultTab,
+    convId: newId("conv"),
+    fileName: "",
+  });
+
+  // Convenience aliases
+  const textInput   = ps.textInput;
+  const result      = ps.result;
+  const rounds      = ps.rounds;
+  const activeTab   = ps.activeTab;
+  const convId      = useRef(ps.convId);
+
+  // ── Transient state (ok to reset on refresh) ──────────────────────────────
   const [file, setFile]               = useState<File | null>(null);
-  const [textInput, setTextInput]     = useState("");
   const [isDragging, setIsDragging]   = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress]       = useState(0);
+  const [progress, setProgress]       = useState(result ? 100 : 0);
   const [currentRound, setCurrentRound] = useState(0);
-  const [rounds, setRounds]           = useState<AdversarialRound[]>([]);
-  const [statusText, setStatusText]   = useState("");
-  const [result, setResult]           = useState<AnalysisResult | null>(null);
+  const [statusText, setStatusText]   = useState(result ? "Analysis complete!" : "");
   const [error, setError]             = useState<string | null>(null);
-  const [activeTab, setActiveTab]     = useState<ResultTab>("overview");
   const [kanoonResults, setKanoonResults] = useState<KanoonResult[]>([]);
   const [kanoonLoading, setKanoonLoading] = useState(false);
   const [kanoonCourt, setKanoonCourt] = useState("");
   const [ttsText, setTtsText]         = useState<string | undefined>(undefined);
   const wsRef    = useRef<WebSocket | null>(null);
   const fileRef  = useRef<HTMLInputElement>(null);
-  const convId   = useRef(newId("conv"));
 
   // Pre-fill from generate page "Check It" button
   useEffect(() => {
     const prefill = sessionStorage.getItem("cs_prefill_contract");
     if (prefill) {
-      setTextInput(prefill);
+      setPs({ textInput: prefill, result: null, rounds: [], convId: newId("conv") });
       sessionStorage.removeItem("cs_prefill_contract");
     }
   }, []);
@@ -58,10 +72,10 @@ export default function CheckPage() {
     if (msg.type === "round_update") {
       setProgress(msg.progress);
       setCurrentRound(msg.round.round_number);
-      setRounds(prev => [...prev, msg.round]);
+      setPs({ rounds: [...(ps.rounds ?? []), msg.round] });
       setStatusText(`Round ${msg.round.round_number}: ${msg.round.vulnerabilities_found} problems spotted (Score: ${msg.round.score})`);
     } else if (msg.type === "completed") {
-      setResult(msg.result);
+      setPs({ result: msg.result });
       setIsProcessing(false);
       setProgress(100);
       setStatusText("Analysis complete!");
@@ -71,29 +85,17 @@ export default function CheckPage() {
          msg.result.risk_score < 40 ? "A few issues were found. Review them carefully." :
          "Significant issues found. Get legal advice before signing.")
       );
-      // Save conversation
+      // Save to Supabase
       saveConversation({
-        id: convId.current,
-        title: file?.name || "Contract Check",
-        type: "check",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        starred: false,
-        messageCount: 1,
-        riskScore: msg.result.risk_score,
+        id: convId.current, title: ps.fileName || "Contract Check",
+        type: "check", createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(), starred: false, messageCount: 1,
       });
-      // Save document
-      if (file) {
-        saveDocument({
-          id: newId("doc"),
-          name: file.name,
-          size: file.size,
-          conversationId: convId.current,
-          conversationTitle: file.name,
-          uploadedAt: new Date().toISOString(),
-          fileType: file.name.split(".").pop() ?? "txt",
-        });
-      }
+      saveContractResult({
+        taskId: convId.current,
+        filename: ps.fileName || "contract",
+        analysis: msg.result,
+      });
       fetchCaseLaw("creator contract");
     } else if (msg.type === "error") {
       const raw = msg.error ?? "Unknown error";
@@ -104,7 +106,8 @@ export default function CheckPage() {
       setError(friendly);
       setIsProcessing(false);
     }
-  }, [file]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ps.fileName]);
 
   // ── Fetch case law ────────────────────────────────────────────────────────
 
@@ -124,8 +127,7 @@ export default function CheckPage() {
     setIsProcessing(true);
     setProgress(0);
     setCurrentRound(0);
-    setRounds([]);
-    setResult(null);
+    setPs({ rounds: [], result: null });
     setError(null);
     setStatusText("Starting your contract check…");
     try {
@@ -141,8 +143,9 @@ export default function CheckPage() {
   };
 
   const handleReset = () => {
-    setFile(null); setTextInput(""); setResult(null); setError(null);
-    setRounds([]); setProgress(0); setCurrentRound(0); setActiveTab("overview");
+    setFile(null);
+    setPs({ textInput: "", result: null, rounds: [], convId: newId("conv"), fileName: "" });
+    setError(null); setProgress(0); setCurrentRound(0);
     convId.current = newId("conv");
   };
 
@@ -198,11 +201,11 @@ export default function CheckPage() {
             className={`drop-zone mb-6 ${isDragging ? "active" : ""}`}
             onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
-            onDrop={e => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) setFile(f); }}
+            onDrop={e => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) { setFile(f); setPs({ fileName: f.name }); } }}
             onClick={() => fileRef.current?.click()}
           >
             <input ref={fileRef} type="file" accept=".pdf,.txt,.doc,.docx" className="hidden"
-              onChange={e => setFile(e.target.files?.[0] || null)} />
+              onChange={e => { const f = e.target.files?.[0] || null; setFile(f); if (f) setPs({ fileName: f.name }); }} />
             <div style={{ fontSize: "2.5rem", marginBottom: 12 }}>📂</div>
             {file ? (
               <div>
@@ -229,13 +232,13 @@ export default function CheckPage() {
 
           <textarea className="lexai-textarea" style={{ marginBottom: 20 }}
             placeholder="Paste your contract text here…" value={textInput}
-            onChange={e => setTextInput(e.target.value)} rows={7} />
+            onChange={e => setPs({ textInput: e.target.value })} rows={7} />
 
           {/* Voice */}
           <div style={{ marginBottom: 20 }}>
             <p style={{ fontSize: "0.72rem", color: "var(--color-lexai-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>🎙️ Or speak your document</p>
             <VoiceInterface
-              onTranscript={text => setTextInput(prev => prev ? `${prev}\n${text}` : text)}
+              onTranscript={text => setPs({ textInput: ps.textInput ? `${ps.textInput}\n${text}` : text })}
               textToSpeak={ttsText}
               placeholder="Speak your contract text…"
             />
@@ -321,7 +324,7 @@ export default function CheckPage() {
           {/* Tabs */}
           <div style={{ display: "flex", gap: 6, marginBottom: 20, borderBottom: "1px solid var(--color-lexai-border)", paddingBottom: 6, flexWrap: "wrap" }}>
             {RESULT_TABS.map(t => (
-              <button key={t.key} onClick={() => setActiveTab(t.key)}
+              <button key={t.key} onClick={() => setPs({ activeTab: t.key })}
                 style={{
                   padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: "0.8rem", fontWeight: activeTab === t.key ? 700 : 500,
                   background: activeTab === t.key ? "var(--color-lexai-accent)" : "transparent",

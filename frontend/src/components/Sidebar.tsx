@@ -2,7 +2,8 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getConversations, deleteConversation, getProfile, type CSConversation } from "@/lib/store";
+import { getConversations, deleteConversation, type CSConversation } from "@/lib/db";
+
 
 // ── Nav item definitions ──────────────────────────────────────────────────────
 
@@ -47,10 +48,8 @@ function SidebarInner() {
   const [profile, setProfile] = useState<{ name: string } | null>(null);
 
   useEffect(() => {
-    setRecentChats(getConversations().filter(c => c.type === "general").slice(0, 6));
-    const p = getProfile();
-    if (p) setProfile(p);
-  }, [pathname]); // refresh on route change
+    getConversations("general").then(convs => setRecentChats(convs.slice(0, 6)));
+  }, [pathname]);
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 

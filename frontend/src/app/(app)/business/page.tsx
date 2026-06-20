@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { getBizConversations, type CSConversation } from "@/lib/store";
+import { getConversations, type CSConversation } from "@/lib/db";
+
 import BusinessSetupChat from "@/components/BusinessSetupChat";
 
 export default function BusinessPage() {
@@ -9,7 +10,7 @@ export default function BusinessPage() {
   const [activeSession, setActiveSession] = useState<string | null>(null);
 
   useEffect(() => {
-    setSessions(getBizConversations().slice(0, 8));
+    getConversations("business").then(convs => setSessions(convs.slice(0, 8)));
   }, []);
 
   return (

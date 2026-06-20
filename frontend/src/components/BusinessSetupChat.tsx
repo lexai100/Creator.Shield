@@ -9,6 +9,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import type { BusinessSetupMessage, BusinessChecklistItem } from "@/lib/api";
 import { businessSetupChat } from "@/lib/api";
+import { saveConversation, saveMessage, newId } from "@/lib/db";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -208,6 +209,8 @@ export default function BusinessSetupChat() {
   const [sessionId] = useState<string>(() => saved?.sessionId ?? `biz_${Date.now()}`);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  // stable conversation id for this session
+  const [convId] = useState(() => saved?.sessionId ?? newId("biz"));
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -280,15 +283,18 @@ export default function BusinessSetupChat() {
 
       setProgress(response.progress_percent ?? 0);
 
-      const aiMsg: BusinessSetupMessage = {
-        role: "assistant",
-        content: response.reply,
-      };
+      const aiMsg: BusinessSetupMessage = { role: "assistant", content: response.reply };
       setMessages((prev) => [...prev, aiMsg]);
 
       if (response.checklist && response.checklist.length > 0) {
         mergeChecklist(response.checklist);
       }
+
+      // Persist to Supabase
+      const title = messages.filter(m => m.role === "user")[0]?.content.slice(0, 60) ?? "Business Setup Session";
+      await saveConversation({ id: convId, title, type: "business", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), starred: false, messageCount: messages.length + 2 });
+      await saveMessage({ conversationId: convId, role: "user", content: userContent });
+      await saveMessage({ conversationId: convId, role: "assistant", content: response.reply });
     } catch (err) {
       setMessages((prev) => [
         ...prev,
