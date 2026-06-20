@@ -29,7 +29,6 @@ export default function CheckPage() {
   const [ps, setPs, clearPs] = usePageState("check", {
     textInput: "",
     result: null as AnalysisResult | null,
-    rounds: [] as AdversarialRound[],
     activeTab: "overview" as ResultTab,
     convId: newId("conv"),
     fileName: "",
@@ -38,11 +37,11 @@ export default function CheckPage() {
   // Convenience aliases
   const textInput   = ps.textInput;
   const result      = ps.result;
-  const rounds      = ps.rounds;
   const activeTab   = ps.activeTab;
   const convId      = useRef(ps.convId);
 
-  // ── Transient state (ok to reset on refresh) ──────────────────────────────
+  // ── Transient state (resets on refresh — that's fine) ─────────────────────
+  const [rounds, setRounds]           = useState<AdversarialRound[]>([]);
   const [file, setFile]               = useState<File | null>(null);
   const [isDragging, setIsDragging]   = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -61,7 +60,7 @@ export default function CheckPage() {
   useEffect(() => {
     const prefill = sessionStorage.getItem("cs_prefill_contract");
     if (prefill) {
-      setPs({ textInput: prefill, result: null, rounds: [], convId: newId("conv") });
+      setPs({ textInput: prefill, result: null, convId: newId("conv") });
       sessionStorage.removeItem("cs_prefill_contract");
     }
   }, []);
@@ -72,7 +71,7 @@ export default function CheckPage() {
     if (msg.type === "round_update") {
       setProgress(msg.progress);
       setCurrentRound(msg.round.round_number);
-      setPs({ rounds: [...(ps.rounds ?? []), msg.round] });
+      setRounds(prev => [...prev, msg.round]);   // functional updater — always fresh
       setStatusText(`Round ${msg.round.round_number}: ${msg.round.vulnerabilities_found} problems spotted (Score: ${msg.round.score})`);
     } else if (msg.type === "completed") {
       setPs({ result: msg.result });
@@ -127,7 +126,8 @@ export default function CheckPage() {
     setIsProcessing(true);
     setProgress(0);
     setCurrentRound(0);
-    setPs({ rounds: [], result: null });
+    setRounds([]);
+    setPs({ result: null });
     setError(null);
     setStatusText("Starting your contract check…");
     try {
@@ -144,7 +144,8 @@ export default function CheckPage() {
 
   const handleReset = () => {
     setFile(null);
-    setPs({ textInput: "", result: null, rounds: [], convId: newId("conv"), fileName: "" });
+    setPs({ textInput: "", result: null, convId: newId("conv"), fileName: "" });
+    setRounds([]);
     setError(null); setProgress(0); setCurrentRound(0);
     convId.current = newId("conv");
   };

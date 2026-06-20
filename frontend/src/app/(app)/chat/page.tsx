@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getMessages, saveMessage, saveConversation, newId, type CSConversation } from "@/lib/db";
+import SimpleMarkdown from "@/components/SimpleMarkdown";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://creatorshield.onrender.com";
 
@@ -209,10 +210,12 @@ function ChatInner() {
                   background: msg.role === "user" ? "rgba(212,130,26,0.08)" : "var(--color-lexai-surface-2)",
                   border: `1px solid ${msg.role === "user" ? "rgba(212,130,26,0.2)" : "var(--color-lexai-border)"}`,
                   borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                  padding: "12px 16px", fontSize: "0.88rem", lineHeight: 1.7,
-                  color: "var(--color-lexai-text)", whiteSpace: "pre-wrap",
+                  padding: "12px 16px", lineHeight: 1.7,
+                  color: "var(--color-lexai-text)",
                 }}>
-                  {msg.content}
+                  {msg.role === "user"
+                    ? <span style={{ fontSize: "0.88rem", whiteSpace: "pre-wrap" }}>{msg.content}</span>
+                    : <SimpleMarkdown content={msg.content} />}
                 </div>
               </div>
             ))}
