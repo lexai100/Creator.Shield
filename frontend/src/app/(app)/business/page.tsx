@@ -1,13 +1,19 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { getConversations, type CSConversation } from "@/lib/db";
-
+import { useState, useEffect } from "react";
+import { getConversations, newId, type CSConversation } from "@/lib/db";
 import BusinessSetupChat from "@/components/BusinessSetupChat";
 
 export default function BusinessPage() {
   const [sessions, setSessions] = useState<CSConversation[]>([]);
   const [activeSession, setActiveSession] = useState<string | null>(null);
+  // Each new session gets a unique key so React fully remounts the chat component
+  const [sessionKey, setSessionKey] = useState(() => newId("biz-session"));
+
+  const handleNewSession = () => {
+    setActiveSession(null);
+    setSessionKey(newId("biz-session")); // forces clean remount
+  };
 
   useEffect(() => {
     getConversations("business").then(convs => setSessions(convs.slice(0, 8)));
@@ -34,7 +40,7 @@ export default function BusinessPage() {
 
         <div style={{ padding: "8px 10px 6px" }}>
           <button
-            onClick={() => setActiveSession(null)}
+            onClick={handleNewSession}
             style={{
               width: "100%", padding: "10px 12px", borderRadius: 10,
               background: !activeSession ? "rgba(212,130,26,0.12)" : "transparent",
@@ -82,9 +88,9 @@ export default function BusinessPage() {
         </div>
       </div>
 
-      {/* Chat area */}
+      {/* Chat area — key forces full remount on new session */}
       <div style={{ flex: 1, overflow: "hidden" }}>
-        <BusinessSetupChat />
+        <BusinessSetupChat key={activeSession ?? sessionKey} sessionId={activeSession ?? undefined} />
       </div>
     </div>
   );

@@ -66,8 +66,8 @@ async def invoke_with_fallback(
     config: Any,          # backend.config.Settings
     *,
     temperature: float = 0.5,
-    max_tokens: int = 4096,
     groq_model: str | None = None,
+    **kwargs,             # absorb any legacy max_tokens= callers pass in
 ) -> Any:
     """
     Invoke the LLM with automatic Groq → Gemini fallback on rate limits.
@@ -77,8 +77,9 @@ async def invoke_with_fallback(
     messages    : LangChain message list (SystemMessage / HumanMessage etc.)
     config      : Settings instance (needs GROQ_API_KEY, GROQ_BASE_URL, GEMINI_API_KEY)
     temperature : sampling temperature
-    max_tokens  : max completion tokens
     groq_model  : override the Groq model name (defaults to config.FAST_MODEL)
+
+    Note: max_tokens is intentionally NOT set — models use their full context window.
     """
     from langchain_openai import ChatOpenAI  # Groq uses OpenAI-compatible endpoint
 
@@ -91,7 +92,6 @@ async def invoke_with_fallback(
             base_url=config.GROQ_BASE_URL,
             api_key=config.GROQ_API_KEY,
             temperature=temperature,
-            max_tokens=max_tokens,
         )
         try:
             return await groq_llm.ainvoke(messages)
@@ -127,7 +127,6 @@ async def invoke_with_fallback(
         model=gemini_model,
         google_api_key=gemini_api_key,
         temperature=temperature,
-        max_output_tokens=max_tokens,
     )
 
     # Gemini retry with backoff (in case it also rate-limits)

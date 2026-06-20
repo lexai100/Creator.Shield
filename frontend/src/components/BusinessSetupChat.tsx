@@ -168,24 +168,31 @@ function ChecklistCard({
 
 // ── Main Component ────────────────────────────────────────────────────────
 
-const STORAGE_KEY = "cs_business_chat_v1";
+const BASE_STORAGE_KEY = "cs_business_chat_v2";
 
-function loadSavedSession() {
+function getStorageKey(sessionId?: string) {
+  return sessionId ? `${BASE_STORAGE_KEY}_${sessionId}` : BASE_STORAGE_KEY;
+}
+
+function loadSavedSession(sessionId?: string) {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(getStorageKey(sessionId));
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
 
-function saveSession(data: {
-  messages: BusinessSetupMessage[];
-  checklist: ChecklistItemWithState[];
-  sessionId: string;
-  progress: number;
-}) {
+function saveSession(
+  sessionId: string | undefined,
+  data: {
+    messages: BusinessSetupMessage[];
+    checklist: ChecklistItemWithState[];
+    sessionId: string;
+    progress: number;
+  }
+) {
   if (typeof window === "undefined") return;
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+  try { localStorage.setItem(getStorageKey(sessionId), JSON.stringify(data)); } catch {}
 }
 
 const INITIAL_MESSAGE: BusinessSetupMessage = {
@@ -194,8 +201,8 @@ const INITIAL_MESSAGE: BusinessSetupMessage = {
     "Hi! I'm your Business Setup Guide 👋\n\nI'll help you figure out exactly which registrations and licences you need as a content creator in India — step by step, in simple language.\n\nTo get started: What kind of content do you make, and are you selling any products or services alongside it?",
 };
 
-export default function BusinessSetupChat() {
-  const saved = loadSavedSession();
+export default function BusinessSetupChat({ sessionId }: { sessionId?: string }) {
+  const saved = loadSavedSession(sessionId);
 
   const [messages, setMessages] = useState<BusinessSetupMessage[]>(
     saved?.messages?.length ? saved.messages : [INITIAL_MESSAGE]
@@ -206,7 +213,7 @@ export default function BusinessSetupChat() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(saved?.progress ?? 0);
-  const [sessionId] = useState<string>(() => saved?.sessionId ?? `biz_${Date.now()}`);
+  const [bizSessionId] = useState<string>(() => saved?.sessionId ?? `biz_${Date.now()}`);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   // stable conversation id for this session
@@ -223,8 +230,8 @@ export default function BusinessSetupChat() {
 
   // Persist to localStorage whenever messages/checklist/progress change
   useEffect(() => {
-    saveSession({ messages, checklist, sessionId, progress });
-  }, [messages, checklist, sessionId, progress]);
+    saveSession(sessionId, { messages, checklist, sessionId: bizSessionId, progress });
+  }, [messages, checklist, bizSessionId, progress, sessionId]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -236,7 +243,7 @@ export default function BusinessSetupChat() {
   }, [input]);
 
   const handleClearChat = () => {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(getStorageKey(sessionId));
     setMessages([INITIAL_MESSAGE]);
     setChecklist([]);
     setProgress(0);
@@ -276,7 +283,7 @@ export default function BusinessSetupChat() {
 
     try {
       const response = await businessSetupChat({
-        session_id: sessionId,
+        session_id: bizSessionId,
         message: userContent,
         conversation_history: [...messages, userMsg],
       });
