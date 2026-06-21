@@ -320,7 +320,6 @@ async def _run_generation_background(
         result = await adversarial_loop.run_on_request(
             request=request,
             callback=on_round,
-            max_rounds_override=request.max_rounds,
         )
 
         result.task_id = task_id
