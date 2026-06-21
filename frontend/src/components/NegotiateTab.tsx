@@ -17,6 +17,11 @@ export default function NegotiateTab({ vulnerabilities }: NegotiateTabProps) {
   const [copied, setCopied] = useState(false);
   const [creatorName, setCreatorName] = useState("");
   const [brandName, setBrandName] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState<"idle" | "success" | "error">("idle");
+
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://creatorshield.onrender.com";
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -49,6 +54,31 @@ export default function NegotiateTab({ vulnerabilities }: NegotiateTabProps) {
     const subject = encodeURIComponent(email.email_subject);
     const body = encodeURIComponent(email.email_body);
     window.open(`mailto:?subject=${subject}&body=${body}`);
+  };
+
+  const handleSendEmail = async () => {
+    if (!email || !recipientEmail.trim()) return;
+    setSending(true);
+    setSendStatus("idle");
+    try {
+      const res = await fetch(`${API_BASE}/api/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: recipientEmail.trim(),
+          subject: email.email_subject,
+          body: email.email_body,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setSendStatus("success");
+      setTimeout(() => setSendStatus("idle"), 5000);
+    } catch {
+      setSendStatus("error");
+      setTimeout(() => setSendStatus("idle"), 4000);
+    } finally {
+      setSending(false);
+    }
   };
 
   const tones = [
@@ -165,7 +195,7 @@ export default function NegotiateTab({ vulnerabilities }: NegotiateTabProps) {
           )}
 
           {/* Action buttons */}
-          <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
             <button className="btn-primary" style={{ fontSize: "0.85rem", padding: "10px 20px" }} onClick={handleCopy}>
               <span>{copied ? "✓ Copied!" : "📋 Copy Email"}</span>
             </button>
@@ -175,6 +205,48 @@ export default function NegotiateTab({ vulnerabilities }: NegotiateTabProps) {
             <button className="btn-secondary" style={{ fontSize: "0.85rem", padding: "10px 20px" }} onClick={() => setEmail(null)}>
               ↺ Regenerate
             </button>
+          </div>
+
+          {/* Send directly via n8n */}
+          <div style={{ marginTop: 18, padding: "16px 18px", background: "rgba(212,130,26,0.05)", border: "1px solid rgba(212,130,26,0.2)", borderRadius: 12 }}>
+            <p style={{ fontSize: "0.78rem", fontWeight: 700, marginBottom: 10, color: "var(--color-lexai-accent-glow)" }}>📨 Send directly to brand&apos;s email</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="lexai-input"
+                type="email"
+                placeholder="brand@company.com"
+                value={recipientEmail}
+                onChange={e => setRecipientEmail(e.target.value)}
+                style={{ fontSize: "0.85rem", flex: 1 }}
+              />
+              <button
+                onClick={handleSendEmail}
+                disabled={sending || !recipientEmail.trim()}
+                style={{
+                  padding: "10px 20px",
+                  borderRadius: 10,
+                  border: "none",
+                  fontWeight: 700,
+                  fontSize: "0.85rem",
+                  cursor: sending || !recipientEmail.trim() ? "not-allowed" : "pointer",
+                  background: sendStatus === "success" ? "rgba(34,197,94,0.15)" : sendStatus === "error" ? "rgba(239,68,68,0.15)" : "var(--color-lexai-accent)",
+                  color: sendStatus === "success" ? "#22c55e" : sendStatus === "error" ? "#ef4444" : "#0d0b08",
+                  opacity: !recipientEmail.trim() ? 0.5 : 1,
+                  transition: "all 0.2s",
+                  whiteSpace: "nowrap",
+                  display: "flex", alignItems: "center", gap: 6,
+                }}
+              >
+                {sending ? (
+                  <><span style={{ width: 14, height: 14, border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin 1s linear infinite" }} /> Sending…</>
+                ) : sendStatus === "success" ? "✓ Sent!"
+                  : sendStatus === "error" ? "✗ Failed"
+                  : "📨 Send"}
+              </button>
+            </div>
+            {sendStatus === "error" && (
+              <p style={{ fontSize: "0.72rem", color: "#ef4444", marginTop: 6 }}>Failed to send. Make sure N8N_WEBHOOK_URL is set in Render environment variables.</p>
+            )}
           </div>
         </div>
       )}

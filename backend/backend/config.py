@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
+    # ── Integrations ──────────────────────────────────────────────────────
+    N8N_WEBHOOK_URL: str = ""  # Set in Render env to enable "Send Email" feature
+
     # ── Model constants (not loaded from env) ─────────────────────────────
 
     # DocumentCraft – expert legal drafter (Groq: Llama 3.3 70B)

@@ -26,6 +26,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from backend.agents.adversarial_loop import AdversarialLoop
 from backend.agents.document_craft import DocumentCraftAgent
@@ -1092,6 +1093,39 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
                 ws_connections[task_id].remove(websocket)
             except ValueError:
                 pass
+
+
+# ── Send Email via n8n ───────────────────────────────────────────────────────
+
+class EmailSendRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+
+
+@app.post("/api/send-email", tags=["creator"])
+async def send_email_via_n8n(request: EmailSendRequest):
+    """
+    POST /api/send-email
+    Forward a negotiation email to the brand via n8n + Gmail.
+    """
+    n8n_url = settings.N8N_WEBHOOK_URL
+    if not n8n_url:
+        raise HTTPException(
+            503,
+            detail="Email sending is not configured. Set N8N_WEBHOOK_URL in environment.",
+        )
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                n8n_url,
+                json={"to": request.to, "subject": request.subject, "body": request.body},
+            )
+            resp.raise_for_status()
+        return {"status": "sent", "to": request.to}
+    except Exception as exc:
+        logger.exception("Email send via n8n failed: %s", exc)
+        raise HTTPException(500, detail=f"Failed to send email: {exc}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
