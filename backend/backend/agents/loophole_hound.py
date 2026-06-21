@@ -255,7 +255,7 @@ class LoopholeHoundAgent:
         return await invoke_with_fallback(
             messages,
             self._config,
-            temperature=0.7,
+            temperature=0.2,   # Low temperature — correctness > creativity for legal analysis
             max_tokens=4096,
             groq_model=self._config.LOOPHOLE_HOUND_MODEL,
         )
@@ -286,7 +286,15 @@ class LoopholeHoundAgent:
         )
         messages = [
             SystemMessage(content=system_content),
-            HumanMessage(content=f"DOCUMENT TO ATTACK:\n\n{document_text[:12000]}"),
+            HumanMessage(content=(
+                "STRICT GROUNDING RULE: Only reference clauses, terms, or wording that are "
+                "VERBATIM present in the CONTRACT TEXT below. Do not assume, infer, or invent "
+                "the existence of any clause not explicitly written here. Do not reference "
+                "section numbers higher than exist in this contract. If a clause is missing, "
+                "say 'Missing' — do not describe what a typical version would contain as if "
+                "it already exists in the document.\n\n"
+                f"CONTRACT TEXT (analyze only this):\n\n{document_text[:12000]}"
+            )),
         ]
 
         response = await self._invoke_with_retry(messages)
@@ -379,7 +387,15 @@ class LoopholeHoundAgent:
         )
         messages = [
             SystemMessage(content=system_content),
-            HumanMessage(content=f"INFLUENCER/BRAND CONTRACT TO ANALYSE:\n\n{document_text[:12000]}"),
+            HumanMessage(content=(
+                "STRICT GROUNDING RULE: Only reference clauses, terms, or wording that are "
+                "VERBATIM present in the CONTRACT TEXT below. Do not assume, infer, or invent "
+                "the existence of any clause not explicitly written here. Do not reference "
+                "section numbers higher than exist in this contract. If a clause is missing, "
+                "say 'Missing' — do not describe what a typical version would contain as if "
+                "it already exists in the document.\n\n"
+                f"INFLUENCER/BRAND CONTRACT TO ANALYSE:\n\n{document_text[:12000]}"
+            )),
         ]
 
         response = await self._invoke_with_retry(messages)

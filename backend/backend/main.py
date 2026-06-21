@@ -224,10 +224,14 @@ async def _run_adversarial_background(
                 "progress": record.progress,
             })
 
-        # Run the loop
+        # Run the loop — 1 round only for contract checking.
+        # The full 3-round loop is for generation. For checking:
+        #   Round 1: attack original → find real issues → patch → output
+        # No more rounds needed. More rounds = same issues flagged again = noise.
         result = await adversarial_loop.run_on_document(
             document_text=working_text,
             callback=on_round,
+            max_rounds_override=1,
         )
 
         # De-tokenise the final document AND all findings text
@@ -807,9 +811,12 @@ async def analyze_creator_contract(
         async def on_round(round_data):
             pass  # Could broadcast via WebSocket if needed
 
+        # 1 round only — attack original, patch once, output.
+        # Multi-round loops are for generation, not checking.
         loop_result = await adversarial_loop.run_on_document(
             document_text=working_text,
             callback=on_round,
+            max_rounds_override=1,
         )
 
         # Also run creator-specific attack for richer metadata

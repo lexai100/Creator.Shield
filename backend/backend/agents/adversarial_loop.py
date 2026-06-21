@@ -55,13 +55,16 @@ class AdversarialLoop:
         self,
         document_text: str,
         callback: Optional[ProgressCallback] = None,
+        max_rounds_override: Optional[int] = None,
     ) -> AnalysisResult:
         """
         Run the adversarial loop on an existing document.
+        Pass max_rounds_override=1 for pure analysis (no iterative improvement needed).
         """
         return await self._execute_loop(
             initial_document=document_text,
             callback=callback,
+            max_rounds_override=max_rounds_override,
         )
 
     async def run_on_request(
@@ -95,24 +98,29 @@ class AdversarialLoop:
         self,
         initial_document: str,
         callback: Optional[ProgressCallback] = None,
+        max_rounds_override: Optional[int] = None,
     ) -> AnalysisResult:
         """
         The heart of the adversarial process.
+        max_rounds_override lets callers cap the rounds without changing the
+        class-level default (e.g. check endpoint uses 1, generate uses full 3).
         """
         rounds: list[AdversarialRound] = []
-        original_document = initial_document   # ← never mutated
-        current_doc = initial_document          # ← patched each round
+        current_doc = initial_document
         all_vulnerabilities: list[dict[str, Any]] = []
         last_report: Optional[LoopholeReport] = None
+        max_rounds = max_rounds_override if max_rounds_override is not None else self.max_rounds
 
-        for round_num in range(1, self.max_rounds + 1):
-            logger.info("═══ Adversarial Round %d/%d ═══", round_num, self.max_rounds)
+        for round_num in range(1, max_rounds + 1):
+            logger.info("═══ Adversarial Round %d/%d ═══", round_num, max_rounds)
 
             # ── ATTACK PHASE ──────────────────────────────────────────
-            # IMPORTANT: always attack the ORIGINAL document so the attacker
-            # never analyses its own recommendations from previous rounds.
-            logger.info("LoopholeHound attacking ORIGINAL document (round %d)...", round_num)
-            attack_report = await self.attacker.attack_document(original_document)
+            # Attack the CURRENT document (original on round 1, patched on round 2+).
+            # This allows score to genuinely improve across rounds for generation.
+            # For analysis-only (max_rounds=1) there is only one round, so no
+            # feedback loop can form.
+            logger.info("LoopholeHound attacking document (round %d)...", round_num)
+            attack_report = await self.attacker.attack_document(current_doc)
             last_report = attack_report
 
             logger.info(
@@ -153,7 +161,7 @@ class AdversarialLoop:
                 break
 
             # ── PATCH PHASE ───────────────────────────────────────────
-            if round_num < self.max_rounds:
+            if round_num < max_rounds:
                 logger.info(
                     "DocumentCraft patching %d vulnerabilities...",
                     len(attack_report.vulnerabilities),
@@ -162,10 +170,8 @@ class AdversarialLoop:
                     current_doc, attack_report,
                 )
                 round_data.patches_applied = len(attack_report.vulnerabilities)
-                # DocumentCraft patches the EVOLVING doc — attacker will still
-                # analyse the original next round, so no feedback loop.
                 current_doc = patched_doc
-                logger.info("Patch complete (current_doc updated, original unchanged).")
+                logger.info("Patch complete. Round %d doc ready for next attack.", round_num)
             else:
                 # Final round — still patch, user gets the best possible doc
                 logger.info("Final round — applying last patches...")
