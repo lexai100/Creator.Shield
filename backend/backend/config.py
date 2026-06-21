@@ -39,10 +39,10 @@ class Settings(BaseSettings):
 
     # ── Model constants (not loaded from env) ─────────────────────────────
 
-    # DocumentCraft – expert legal drafter (Groq: Llama 3.1 70B — higher free-tier RPM)
-    DOCUMENT_CRAFT_MODEL: str = "llama-3.1-70b-versatile"
-    # LoopholeHound – adversarial analyst (Groq: Llama 3.1 70B — higher free-tier RPM)
-    LOOPHOLE_HOUND_MODEL: str = "llama-3.1-70b-versatile"
+    # DocumentCraft – expert legal drafter (Groq: Llama 3.3 70B)
+    DOCUMENT_CRAFT_MODEL: str = "llama-3.3-70b-versatile"
+    # LoopholeHound – adversarial analyst (Groq: Llama 3.3 70B)
+    LOOPHOLE_HOUND_MODEL: str = "llama-3.3-70b-versatile"
     # Fast utility model (Groq: Llama 3.1 8B Instant)
     FAST_MODEL: str = "llama-3.1-8b-instant"
 
