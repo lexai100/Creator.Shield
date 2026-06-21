@@ -24,6 +24,7 @@ const FEATURE_ITEMS: NavItem[] = [
   { label: "Write a Contract",   icon: "✍️", href: "/generate" },
   { label: "Set Up My Business", icon: "🏢", href: "/business" },
   { label: "Negotiate with Brands", icon: "📧", href: "/negotiate" },
+  { label: "Scam Deal Checker",  icon: "🚨", href: "/scam-check" },
 ];
 
 const DOC_ITEMS: NavItem[] = [

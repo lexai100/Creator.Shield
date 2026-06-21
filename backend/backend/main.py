@@ -31,6 +31,7 @@ from backend.agents.adversarial_loop import AdversarialLoop
 from backend.agents.document_craft import DocumentCraftAgent
 from backend.agents.loophole_hound import LoopholeHoundAgent
 from backend.agents.business_setup_agent import BusinessSetupAgent
+from backend.agents.scam_detector_agent import ScamDetectorAgent
 from backend.config import settings
 from backend.models.schemas import (
     AnalysisResult,
@@ -77,13 +78,14 @@ adversarial_loop: AdversarialLoop | None = None
 voice_service: VoiceService | None = None
 kanoon_client: IndianKanoonClient | None = None
 business_setup_agent: BusinessSetupAgent | None = None
+scam_detector: ScamDetectorAgent | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialise services on startup, clean up on shutdown."""
     global rag_service, pii_service, document_craft, loophole_hound, adversarial_loop
-    global voice_service, kanoon_client, business_setup_agent
+    global voice_service, kanoon_client, business_setup_agent, scam_detector
 
     logger.info("══════════════════════════════════════════════════")
     logger.info("  LexAI Backend starting up…")
@@ -110,8 +112,10 @@ async def lifespan(app: FastAPI):
     )
     # Business Setup Agent
     business_setup_agent = BusinessSetupAgent(config=settings, rag_service=rag_service)
+    # Scam Detector
+    scam_detector = ScamDetectorAgent(config=settings)
     logger.info(
-        "Agents ready (Groq): DocumentCraft=%s, LoopholeHound=%s, BusinessSetup=FastModel",
+        "Agents ready (Groq): DocumentCraft=%s, LoopholeHound=%s, BusinessSetup=FastModel, ScamDetector=ready",
         settings.DOCUMENT_CRAFT_MODEL,
         settings.LOOPHOLE_HOUND_MODEL,
     )
@@ -895,6 +899,35 @@ async def business_setup_chat(
     except Exception as exc:
         logger.exception("Business setup chat failed: %s", exc)
         raise HTTPException(500, f"Business setup chat failed: {exc}")
+
+
+# ── Scam Deal Detector ────────────────────────────────────────────────────────
+
+@app.post("/api/scam-check", tags=["scam"])
+async def scam_check(body: dict):
+    """
+    POST /api/scam-check
+    Detect if a brand deal email is a scam targeting an Indian creator.
+
+    Body: { "email_text": str, "sender_email": str (optional) }
+
+    Returns scam_score (0-100), verdict, red_flags, safe_signals, recommendation.
+    Also used as the target endpoint for the n8n Gmail automation workflow.
+    """
+    assert scam_detector is not None
+
+    email_text = (body.get("email_text") or "").strip()
+    sender_email = (body.get("sender_email") or "").strip()
+
+    if not email_text or len(email_text) < 20:
+        raise HTTPException(400, "email_text is required (minimum 20 characters)")
+
+    try:
+        result = await scam_detector.analyze(email_text, sender_email)
+        return result
+    except Exception as exc:
+        logger.exception("Scam check failed: %s", exc)
+        raise HTTPException(500, f"Scam check failed: {exc}")
 
 
 # ── General Chat ───────────────────────────────────────────────────────────────
