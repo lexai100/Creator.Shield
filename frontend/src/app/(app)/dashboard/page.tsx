@@ -107,7 +107,6 @@ export default function DashboardPage() {
       {/* Stats row */}
       <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
         <StatCard icon="💬" label="Total Chats" value={stats.totalChats} onClick={() => router.push("/chat")} />
-        <StatCard icon="📄" label="Documents" value={stats.documents} onClick={() => router.push("/docs/documents")} />
         <StatCard icon="📝" label="Notes" value={stats.notes} onClick={() => router.push("/docs/notes")} />
         <StatCard icon="💾" label="Storage Used" value={`${stats.storageMB} MB`} sub="of local storage" />
       </div>
@@ -153,7 +152,11 @@ export default function DashboardPage() {
             convs.map(c => (
               <div
                 key={c.id}
-                onClick={() => router.push(`/chat/${c.id}`)}
+                onClick={() => {
+                  // Contract checks open the check page, not a chat page
+                  if (c.type === "check") router.push("/check");
+                  else router.push(`/chat?id=${c.id}`);
+                }}
                 style={{
                   display: "flex", alignItems: "center", gap: 10,
                   padding: "10px 12px", borderRadius: 10, cursor: "pointer",
@@ -190,7 +193,10 @@ export default function DashboardPage() {
             </div>
           ) : (
             starred.map(c => (
-              <div key={c.id} onClick={() => router.push(`/chat/${c.id}`)}
+              <div key={c.id} onClick={() => {
+                if (c.type === "check") router.push("/check");
+                else router.push(`/chat?id=${c.id}`);
+              }}
                 style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, cursor: "pointer", marginBottom: 4, transition: "background 0.15s" }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}

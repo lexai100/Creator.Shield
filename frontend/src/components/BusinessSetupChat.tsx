@@ -297,8 +297,9 @@ export default function BusinessSetupChat({ sessionId }: { sessionId?: string })
         mergeChecklist(response.checklist);
       }
 
-      // Persist to Supabase
-      const title = messages.filter(m => m.role === "user")[0]?.content.slice(0, 60) ?? "Business Setup Session";
+      // Use the first user message as title — for new sessions that's this very message
+      const firstUserMsg = messages.find(m => m.role === "user")?.content ?? userContent;
+      const title = firstUserMsg.slice(0, 60);
       await saveConversation({ id: convId, title, type: "business", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), starred: false, messageCount: messages.length + 2 });
       await saveMessage({ conversationId: convId, role: "user", content: userContent });
       await saveMessage({ conversationId: convId, role: "assistant", content: response.reply });

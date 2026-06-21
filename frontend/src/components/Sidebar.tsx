@@ -27,7 +27,6 @@ const FEATURE_ITEMS: NavItem[] = [
 ];
 
 const DOC_ITEMS: NavItem[] = [
-  { label: "Documents",          icon: "📄", href: "/docs/documents" },
   { label: "Notes",              icon: "📝", href: "/docs/notes" },
 ];
 
@@ -223,7 +222,7 @@ function SidebarInner() {
         ))}
 
         {/* ── My Docs section ── */}
-        {!collapsed && <div className="sidebar-section-label">My Docs</div>}
+        {!collapsed && DOC_ITEMS.length > 0 && <div className="sidebar-section-label">My Docs</div>}
         {DOC_ITEMS.map(item => (
           <button
             key={item.href}

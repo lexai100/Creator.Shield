@@ -10,7 +10,7 @@ import VoiceInterface from "@/components/VoiceInterface";
 import ComplianceRadar from "@/components/ComplianceRadar";
 import LoopholeNetwork from "@/components/LoopholeNetwork";
 import NegotiateTab from "@/components/NegotiateTab";
-import { saveConversation, saveContractResult, newId } from "@/lib/db";
+import { saveConversation, saveContractResult, getContractResults, newId } from "@/lib/db";
 import { usePageState } from "@/hooks/usePageState";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -21,6 +21,7 @@ function getSeverityColor(sev: string) {
 }
 
 type ResultTab = "overview" | "vulns" | "document" | "rounds" | "caselaw" | "negotiate";
+type HistoryItem = { task_id: string; filename: string; analysis: AnalysisResult; created_at: string; };
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,24 @@ export default function CheckPage() {
   const [ttsText, setTtsText]         = useState<string | undefined>(undefined);
   const wsRef    = useRef<WebSocket | null>(null);
   const fileRef  = useRef<HTMLInputElement>(null);
+
+  // ── Past analyses sidebar ─────────────────────────────────────────────────
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
+  const refreshHistory = async () => {
+    const rows = await getContractResults();
+    setHistory(rows as HistoryItem[]);
+  };
+
+  useEffect(() => { refreshHistory(); }, []);
+
+  const loadHistoryItem = (item: HistoryItem) => {
+    setPs({ result: item.analysis, fileName: item.filename, activeTab: "overview" });
+    setRounds([]);
+    setProgress(100);
+    setStatusText("Analysis complete!");
+    setError(null);
+  };
 
   // Pre-fill from generate page "Check It" button
   useEffect(() => {
@@ -96,6 +115,7 @@ export default function CheckPage() {
         analysis: msg.result,
       });
       fetchCaseLaw("creator contract");
+      refreshHistory(); // update sidebar
     } else if (msg.type === "error") {
       const raw = msg.error ?? "Unknown error";
       const friendly = raw.includes("429") || raw.toLowerCase().includes("too many")
@@ -183,7 +203,81 @@ export default function CheckPage() {
   ];
 
   return (
-    <div style={{ padding: "28px 32px", maxWidth: 1000, margin: "0 auto" }}>
+    <div style={{ display: "flex", height: "calc(100vh - 56px)" }}>
+
+      {/* ── History Sidebar ── */}
+      <div style={{
+        width: 240, flexShrink: 0,
+        borderRight: "1px solid var(--color-lexai-border)",
+        background: "var(--color-lexai-surface)",
+        display: "flex", flexDirection: "column",
+        overflowY: "auto",
+      }}>
+        <div style={{ padding: "16px 16px 10px" }}>
+          <h3 style={{ fontWeight: 800, fontSize: "0.82rem", color: "var(--color-lexai-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>
+            🛡️ Past Checks
+          </h3>
+        </div>
+
+        {/* New Check button */}
+        <div style={{ padding: "4px 10px 8px" }}>
+          <button
+            onClick={handleReset}
+            style={{
+              width: "100%", padding: "9px 12px", borderRadius: 10,
+              background: !result && !isProcessing ? "rgba(212,130,26,0.12)" : "transparent",
+              border: "1px solid " + (!result && !isProcessing ? "rgba(212,130,26,0.3)" : "transparent"),
+              color: !result && !isProcessing ? "var(--color-lexai-accent)" : "var(--color-lexai-text)",
+              fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", textAlign: "left",
+              display: "flex", alignItems: "center", gap: 8,
+            }}
+          >
+            <span>✦</span> New Check
+          </button>
+        </div>
+
+        {/* History list */}
+        {history.length === 0 ? (
+          <p style={{ fontSize: "0.72rem", color: "var(--color-lexai-text-muted)", padding: "8px 16px", lineHeight: 1.5 }}>
+            Your checked contracts will appear here.
+          </p>
+        ) : (
+          <div style={{ padding: "0 10px", display: "flex", flexDirection: "column", gap: 4 }}>
+            {history.map(item => {
+              const score = (item.analysis as AnalysisResult)?.risk_score ?? 0;
+              const scoreColor = score >= 60 ? "#ef4444" : score >= 30 ? "#f59e0b" : "#22c55e";
+              const isActive = ps.fileName === item.filename && result === item.analysis;
+              return (
+                <button
+                  key={item.task_id}
+                  onClick={() => loadHistoryItem(item)}
+                  style={{
+                    width: "100%", padding: "9px 12px", borderRadius: 10, marginBottom: 2,
+                    background: isActive ? "rgba(255,255,255,0.06)" : "transparent",
+                    border: "1px solid " + (isActive ? "var(--color-lexai-border)" : "transparent"),
+                    color: "var(--color-lexai-text)", fontSize: "0.79rem", cursor: "pointer",
+                    textAlign: "left", display: "flex", flexDirection: "column", gap: 3,
+                  }}
+                >
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
+                    📄 {item.filename || "Contract"}
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: "0.7rem", color: scoreColor, fontWeight: 700 }}>Risk {score}</span>
+                    <span style={{ fontSize: "0.68rem", color: "var(--color-lexai-text-muted)" }}>
+                      {new Date(item.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Main content ── */}
+      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ padding: "28px 32px", maxWidth: 1000, margin: "0 auto" }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontFamily: "var(--font-heading)", fontSize: "1.8rem", fontWeight: 900, margin: 0 }}>
@@ -519,6 +613,9 @@ export default function CheckPage() {
           )}
         </div>
       )}
+
+      </div>
+      </div>
     </div>
   );
 }

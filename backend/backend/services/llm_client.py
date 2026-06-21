@@ -43,20 +43,20 @@ def _is_rate_limit(err: str) -> bool:
 
 
 # ── Gemini model mapping ──────────────────────────────────────────────────────
-# Map Groq model names → equivalent Gemini model
-_GROQ_TO_GEMINI: dict[str, str] = {
-    "llama-3.3-70b-versatile": "gemini-2.0-flash",
-    "llama-3.1-8b-instant":    "gemini-2.0-flash",
-    "llama-3.1-70b-versatile": "gemini-2.0-flash",
-    "llama-3-70b-8192":        "gemini-2.0-flash",
-    "mixtral-8x7b-32768":      "gemini-2.0-flash",
-}
+# Try models in order — if one quota is exhausted we fall to the next.
+# gemini-1.5-flash has a separate free-tier quota from gemini-2.0-flash.
+_GEMINI_FALLBACK_MODELS: list[str] = [
+    "gemini-1.5-flash",       # primary fallback — generous free tier
+    "gemini-2.0-flash-lite",  # lighter 2.0 variant with own quota
+    "gemini-2.0-flash",       # last resort (may be exhausted)
+]
 
-_GEMINI_DEFAULT = "gemini-2.0-flash"
+_GEMINI_DEFAULT = "gemini-1.5-flash"
 
 
 def _gemini_model_for(groq_model: str) -> str:
-    return _GROQ_TO_GEMINI.get(groq_model, _GEMINI_DEFAULT)
+    """Return the first model in the fallback list (model rotation handled in invoke)."""
+    return _GEMINI_DEFAULT
 
 
 # ── Core invoke helper ────────────────────────────────────────────────────────
@@ -120,26 +120,31 @@ async def invoke_with_fallback(
             "Run: pip install langchain-google-genai"
         ) from exc
 
-    gemini_model = _gemini_model_for(groq_model)
-    logger.info("Using Gemini fallback model: %s", gemini_model)
+    last_err: Exception | None = None
 
-    gemini_llm = ChatGoogleGenerativeAI(
-        model=gemini_model,
-        google_api_key=gemini_api_key,
-        temperature=temperature,
-    )
-
-    # Gemini retry with backoff (in case it also rate-limits)
-    for attempt in range(3):
+    # Try each Gemini model in order — rotate when one quota is exhausted
+    for gemini_model in _GEMINI_FALLBACK_MODELS:
+        logger.info("Attempting Gemini fallback with model: %s", gemini_model)
+        gemini_llm = ChatGoogleGenerativeAI(
+            model=gemini_model,
+            google_api_key=gemini_api_key,
+            temperature=temperature,
+        )
         try:
             return await gemini_llm.ainvoke(messages)
         except Exception as e:
             err = str(e)
-            if _is_rate_limit(err) and attempt < 2:
-                wait = (2 ** attempt) * 5
-                logger.warning("Gemini rate-limited. Retrying in %ds (attempt %d/3)", wait, attempt + 1)
-                await asyncio.sleep(wait)
-            else:
-                raise
+            if _is_rate_limit(err) or "quota" in err.lower() or "exhausted" in err.lower():
+                logger.warning(
+                    "Gemini model %s quota/rate-limit hit — trying next model. Error: %s",
+                    gemini_model, err[:200]
+                )
+                last_err = e
+                await asyncio.sleep(2)  # brief pause before next model
+                continue
+            raise  # non-quota error — propagate immediately
 
-    raise RuntimeError("Both Groq and Gemini failed after retries.")
+    raise RuntimeError(
+        f"All Gemini fallback models exhausted. Last error: {last_err}. "
+        "Either wait for quota reset or add a paid API key."
+    )
