@@ -23,7 +23,7 @@ export default function BusinessPage() {
   const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     await deleteConversation(id);
-    // Also remove the local chat storage for this session
+    // id IS the stableId used as the localStorage key
     try { localStorage.removeItem(`cs_business_chat_v2_${id}`); } catch {}
     if (activeSession === id) {
       setActiveSession(null);

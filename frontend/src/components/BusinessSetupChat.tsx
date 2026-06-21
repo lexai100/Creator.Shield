@@ -204,16 +204,15 @@ const INITIAL_MESSAGE: BusinessSetupMessage = {
 };
 
 export default function BusinessSetupChat({ sessionId }: { sessionId?: string }) {
-  // Only load saved data when resuming a specific existing session
-  // New sessions (sessionId = undefined) always start fresh
+  // When resuming, sessionId IS the stableId (it's what was saved to Supabase as convId).
+  // When starting fresh, sessionId is undefined — generate a brand-new stableId.
+  // This ONE id is used for both localStorage key and Supabase conversation id.
   const saved = sessionId ? loadSavedSession(sessionId) : null;
 
-  // Each instance gets a stable unique internal ID — never inherits a previous session's ID
-  const [bizSessionId] = useState<string>(() =>
-    saved?.sessionId ?? `biz_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`
+  const [stableId] = useState<string>(() =>
+    // Prefer the id embedded in saved data, then the prop, then generate a new one
+    saved?.sessionId ?? sessionId ?? `biz_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`
   );
-  // Stable Supabase conversation ID for this instance
-  const [convId] = useState<string>(() => saved?.sessionId ?? newId("biz"));
 
   const [messages, setMessages] = useState<BusinessSetupMessage[]>(
     saved?.messages?.length ? saved.messages : [INITIAL_MESSAGE]
@@ -236,10 +235,10 @@ export default function BusinessSetupChat({ sessionId }: { sessionId?: string })
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // Persist to localStorage — always under the unique bizSessionId key
+  // Persist to localStorage — always under the single stableId
   useEffect(() => {
-    saveSession(bizSessionId, { messages, checklist, sessionId: bizSessionId, progress });
-  }, [messages, checklist, bizSessionId, progress]);
+    saveSession(stableId, { messages, checklist, sessionId: stableId, progress });
+  }, [messages, checklist, stableId, progress]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -251,7 +250,7 @@ export default function BusinessSetupChat({ sessionId }: { sessionId?: string })
   }, [input]);
 
   const handleClearChat = () => {
-    localStorage.removeItem(getStorageKey(bizSessionId));
+    localStorage.removeItem(getStorageKey(stableId));
     setMessages([INITIAL_MESSAGE]);
     setChecklist([]);
     setProgress(0);
@@ -291,7 +290,7 @@ export default function BusinessSetupChat({ sessionId }: { sessionId?: string })
 
     try {
       const response = await businessSetupChat({
-        session_id: bizSessionId,
+        session_id: stableId,
         message: userContent,
         conversation_history: [...messages, userMsg],
       });
@@ -305,12 +304,12 @@ export default function BusinessSetupChat({ sessionId }: { sessionId?: string })
         mergeChecklist(response.checklist);
       }
 
-      // Use the first user message as title — for new sessions that's this very message
+      // Save to Supabase using stableId (same id as localStorage key)
       const firstUserMsg = messages.find(m => m.role === "user")?.content ?? userContent;
       const title = firstUserMsg.slice(0, 60);
-      await saveConversation({ id: convId, title, type: "business", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), starred: false, messageCount: messages.length + 2 });
-      await saveMessage({ conversationId: convId, role: "user", content: userContent });
-      await saveMessage({ conversationId: convId, role: "assistant", content: response.reply });
+      await saveConversation({ id: stableId, title, type: "business", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), starred: false, messageCount: messages.length + 2 });
+      await saveMessage({ conversationId: stableId, role: "user", content: userContent });
+      await saveMessage({ conversationId: stableId, role: "assistant", content: response.reply });
     } catch (err) {
       setMessages((prev) => [
         ...prev,

@@ -115,13 +115,19 @@ Return your analysis as a JSON object:
 - 86-100: Dangerous — should not be signed as-is
 
 ## Critical Rules
-1. Be AGGRESSIVE — it is better to FLAG a potential issue than MISS a real one.
-2. Provide CONCRETE exploitation scenarios with specific actors and actions.
-3. Reference Indian statutes and case law where relevant.
-4. Every vulnerability MUST have a suggested fix.
-5. Find AT LEAST 3 vulnerabilities. If the document seems perfect, look harder.
-6. Consider BOTH parties' perspectives — who can exploit whom?
-7. Output VALID JSON only — no markdown fences, no commentary outside the JSON.
+1. **EVIDENCE REQUIRED**: Every vulnerability MUST reference an exact clause or section from the contract. If you cannot quote specific text, do not create the finding.
+2. **NO FABRICATION**: Never assume a clause exists if it was not in the document you received. Do not analyse sections numbered higher than exist in the contract.
+3. **NO SELF-ANALYSIS**: Do not analyse recommendations from previous rounds. Only analyse the contract text provided.
+4. **DEDUPLICATE**: Do not report the same risk under different names. Merge overlapping findings.
+5. **STRICT IP RULES**: Only flag IP assignment if the contract explicitly uses assignment language. A reposting/licence clause is NOT an assignment. Never recommend full IP transfer if only a licence exists — recommend a clearer licence instead.
+6. **SEVERITY DISCIPLINE**:
+   - CRITICAL: perpetual IP transfer, unlimited indemnity, payment 100% at brand discretion, waiver of legal rights
+   - HIGH: missing dispute resolution, missing force majeure, missing post-termination payment
+   - MEDIUM: undefined terms, missing jurisdiction, unclear compensation calculation
+   - LOW: minor drafting ambiguities, disclosure wording, payment method unspecified
+7. **CONFIDENCE**: Add a `"confidence"` field — HIGH if directly supported by explicit text, MEDIUM if inferred from missing clause, LOW if based on ambiguity.
+8. If uncertain about a finding, add a note: `"LOW CONFIDENCE — human review recommended."`
+9. Output VALID JSON only — no markdown fences, no commentary outside the JSON.
 
 {exploitation_context}"""
 

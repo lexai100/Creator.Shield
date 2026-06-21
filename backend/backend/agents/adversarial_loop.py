@@ -100,7 +100,8 @@ class AdversarialLoop:
         The heart of the adversarial process.
         """
         rounds: list[AdversarialRound] = []
-        current_doc = initial_document
+        original_document = initial_document   # ← never mutated
+        current_doc = initial_document          # ← patched each round
         all_vulnerabilities: list[dict[str, Any]] = []
         last_report: Optional[LoopholeReport] = None
 
@@ -108,8 +109,10 @@ class AdversarialLoop:
             logger.info("═══ Adversarial Round %d/%d ═══", round_num, self.max_rounds)
 
             # ── ATTACK PHASE ──────────────────────────────────────────
-            logger.info("LoopholeHound attacking document...")
-            attack_report = await self.attacker.attack_document(current_doc)
+            # IMPORTANT: always attack the ORIGINAL document so the attacker
+            # never analyses its own recommendations from previous rounds.
+            logger.info("LoopholeHound attacking ORIGINAL document (round %d)...", round_num)
+            attack_report = await self.attacker.attack_document(original_document)
             last_report = attack_report
 
             logger.info(
@@ -159,8 +162,10 @@ class AdversarialLoop:
                     current_doc, attack_report,
                 )
                 round_data.patches_applied = len(attack_report.vulnerabilities)
+                # DocumentCraft patches the EVOLVING doc — attacker will still
+                # analyse the original next round, so no feedback loop.
                 current_doc = patched_doc
-                logger.info("Patch complete.")
+                logger.info("Patch complete (current_doc updated, original unchanged).")
             else:
                 # Final round — still patch, user gets the best possible doc
                 logger.info("Final round — applying last patches...")
