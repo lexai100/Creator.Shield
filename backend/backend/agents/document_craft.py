@@ -296,18 +296,43 @@ Return VALID JSON:
             HumanMessage(content=prompt),
         ]
         response = await self._invoke_fast(messages)
+
+        def strip_fences(text: str) -> str:
+            """Recursively strip markdown code fences."""
+            text = text.strip()
+            while text.startswith("```"):
+                lines = text.split("\n")
+                text = "\n".join(lines[1:]).strip()
+                if text.endswith("```"):
+                    text = text[:-3].strip()
+            return text
+
         try:
-            content = response.content.strip()
-            if content.startswith("```"):
-                content = "\n".join(content.split("\n")[1:])
-                if content.rstrip().endswith("```"):
-                    content = content.rstrip()[:-3]
-            return json.loads(content)
-        except json.JSONDecodeError:
-            # Fallback: extract what we can
+            content = strip_fences(response.content)
+            parsed = json.loads(content)
+
+            # Unwrap if LLM nested the result inside another object
+            if isinstance(parsed, dict) and "email_body" not in parsed:
+                for v in parsed.values():
+                    if isinstance(v, dict) and "email_body" in v:
+                        parsed = v
+                        break
+
+            email_body = parsed.get("email_body", "")
+            # If email_body is itself JSON/dict, extract inner value
+            if isinstance(email_body, dict):
+                email_body = email_body.get("email_body", str(email_body))
+            # Strip any remaining fences from the body text
+            email_body = strip_fences(str(email_body))
+
             return {
-                "email_subject": f"Re: Brand Collaboration Agreement — Clarifications Needed",
-                "email_body": response.content,
+                "email_subject": parsed.get("email_subject", "Re: Brand Collaboration Agreement"),
+                "email_body": email_body,
+            }
+        except json.JSONDecodeError:
+            return {
+                "email_subject": "Re: Brand Collaboration Agreement — Clarifications Needed",
+                "email_body": strip_fences(response.content),
             }
 
     async def translate_to_plain_english(self, flagged_issues: list) -> list[dict]:

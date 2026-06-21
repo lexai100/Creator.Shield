@@ -83,14 +83,16 @@ export default function GeneratePage() {
         party_a: partyA || undefined,
         party_b: partyB || undefined,
         location: location || undefined,
-        run_adversarial: false, // Just generate, no adversarial rounds
+        run_adversarial: true,
+        max_rounds: 1,
       });
       wsRef.current = connectWebSocket(task_id, handleWS, () => {
         setError("Connection lost. Please try again.");
         setIsGenerating(false);
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Generation failed");
+      const msg = e instanceof Error ? e.message : JSON.stringify(e);
+      setError(msg || "Generation failed. Please try again.");
       setIsGenerating(false);
     }
   };
@@ -119,14 +121,14 @@ export default function GeneratePage() {
   };
 
   const FALLBACK_TYPES = [
-    { value: "FREELANCE",    label: "Freelance / Service Contract" },
-    { value: "BRAND_DEAL",  label: "Brand Deal / Influencer Agreement" },
-    { value: "NDA",          label: "Non-Disclosure Agreement" },
-    { value: "EMPLOYMENT",  label: "Employment Contract" },
-    { value: "RENT_AGREEMENT", label: "Rental Agreement (11-month)" },
-    { value: "PARTNERSHIP", label: "Partnership Deed" },
-    { value: "MOU",          label: "Memorandum of Understanding" },
-    { value: "SALE",         label: "Sale Agreement" },
+    { value: "freelance_contract",   label: "Freelance / Service Contract" },
+    { value: "brand_deal",           label: "Brand Deal / Influencer Agreement" },
+    { value: "nda",                  label: "Non-Disclosure Agreement" },
+    { value: "employment_contract",  label: "Employment Contract" },
+    { value: "rent_agreement",       label: "Rental Agreement (11-month)" },
+    { value: "partnership_deed",     label: "Partnership Deed" },
+    { value: "mou",                  label: "Memorandum of Understanding" },
+    { value: "sale_agreement",       label: "Sale Agreement" },
   ];
 
   return (

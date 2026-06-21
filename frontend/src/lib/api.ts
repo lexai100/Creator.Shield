@@ -150,6 +150,7 @@ export interface GenerationRequest {
   location?: string;
   additional_context?: string;
   run_adversarial?: boolean;
+  max_rounds?: number;
 }
 
 // ── REST API ────────────────────────────────────────────────────────────────

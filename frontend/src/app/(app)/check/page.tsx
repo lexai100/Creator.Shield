@@ -423,25 +423,27 @@ export default function CheckPage() {
 
           {/* Score hero */}
           <div className="glass-card glow-accent" style={{ padding: 28, textAlign: "center", marginBottom: 20 }}>
-            <div style={{ display: "flex", justifyContent: "center", gap: 40, marginBottom: 16 }}>
-              <div>
-                <p style={{ fontSize: "0.8rem", color: "var(--color-lexai-text-muted)", marginBottom: 4 }}>Before</p>
-                <div style={{ fontSize: "2.8rem", fontWeight: 900, color: getScoreColor(result.rounds[0]?.score ?? result.risk_score) }}>
-                  {result.rounds[0]?.score ?? result.risk_score}
-                </div>
-              </div>
-              <div style={{ fontSize: "2rem", color: "var(--color-lexai-accent)", alignSelf: "center" }}>→</div>
-              <div>
-                <p style={{ fontSize: "0.8rem", color: "var(--color-lexai-text-muted)", marginBottom: 4 }}>After (Best)</p>
-                <div style={{ fontSize: "3.5rem", fontWeight: 900, color: getScoreColor(result.risk_score) }}>
-                  {result.risk_score}
-                </div>
-              </div>
-            </div>
-            <p style={{ color: "var(--color-lexai-text-muted)", fontSize: "0.88rem" }}>
-              Checked across <strong style={{ color: "var(--color-lexai-text)" }}>{result.rounds.length}</strong> review rounds
-              {result.pii_entities_found > 0 && <> · 🔒 {result.pii_entities_found} personal details protected</>}
-            </p>
+            {(() => {
+              const finalScore = result.risk_score;
+              const riskLabel = finalScore < 15 ? "LOW RISK" : finalScore < 40 ? "MODERATE RISK" : finalScore < 70 ? "HIGH RISK" : "CRITICAL RISK";
+              const riskEmoji = finalScore < 15 ? "✅" : finalScore < 40 ? "⚠️" : finalScore < 70 ? "🔴" : "🚨";
+              return (
+                <>
+                  <p style={{ fontSize: "0.8rem", color: "var(--color-lexai-text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>Risk Score</p>
+                  <div style={{ fontSize: "4.5rem", fontWeight: 900, color: getScoreColor(finalScore), lineHeight: 1 }}>
+                    {finalScore}
+                    <span style={{ fontSize: "1.5rem", color: "var(--color-lexai-text-muted)", fontWeight: 400 }}>/100</span>
+                  </div>
+                  <p style={{ fontSize: "1rem", fontWeight: 700, color: getScoreColor(finalScore), marginTop: 10, marginBottom: 4 }}>
+                    {riskEmoji} {riskLabel}
+                  </p>
+                  <p style={{ color: "var(--color-lexai-text-muted)", fontSize: "0.82rem" }}>
+                    {result.pii_entities_found > 0 && <>🔒 {result.pii_entities_found} personal details protected · </>}
+                    {result.rounds.length} review round{result.rounds.length !== 1 ? "s" : ""} completed
+                  </p>
+                </>
+              );
+            })()}
           </div>
 
           {/* Tabs */}

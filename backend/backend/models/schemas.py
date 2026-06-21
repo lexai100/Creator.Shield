@@ -65,6 +65,7 @@ class DocumentGenerationRequest(BaseModel):
     location: str = Field("Bangalore, Karnataka", description="Jurisdiction / city")
     additional_clauses: list[str] = Field(default_factory=list, description="Extra clauses to include")
     run_adversarial: bool = Field(True, description="Run adversarial loop after generation")
+    max_rounds: int = Field(1, description="Maximum adversarial rounds (1 = generate + 1 patch pass)")
 
 
 # ── Vulnerability / Attack Models ─────────────────────────────────────────────
