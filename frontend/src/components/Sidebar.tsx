@@ -74,16 +74,40 @@ function SidebarInner() {
         userSelect: "none",
       }}
     >
-      {/* ── Logo ── */}
-      <div
-        className="sidebar-logo"
-        onClick={() => router.push("/")}
-        title="Back to Home"
-        style={{ cursor: "pointer" }}
-      >
-        <span className="sidebar-logo-icon">🛡️</span>
+      {/* ── Logo + Collapse Toggle ── */}
+      <div style={{
+        display: "flex", alignItems: "center",
+        padding: collapsed ? "12px 8px" : "12px 14px",
+        gap: 8, borderBottom: "1px solid var(--color-lexai-border)",
+        flexShrink: 0,
+      }}>
+        {/* Sidebar panel toggle icon (matches image) */}
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          style={{
+            width: 30, height: 30, borderRadius: 8,
+            border: "1px solid var(--color-lexai-border)",
+            background: "transparent",
+            color: "var(--color-lexai-text-muted)",
+            cursor: "pointer", flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "background 0.15s",
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+        >
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1" y="1" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.4"/>
+            <line x1="5" y1="1.5" x2="5" y2="13.5" stroke="currentColor" strokeWidth="1.4"/>
+          </svg>
+        </button>
         {!collapsed && (
-          <span className="sidebar-logo-text">
+          <span
+            className="sidebar-logo-text"
+            style={{ cursor: "pointer", fontSize: "1rem", fontWeight: 800 }}
+            onClick={() => router.push("/")}
+          >
             Creator<span style={{ color: "var(--color-lexai-accent)" }}>Shield</span>
           </span>
         )}
@@ -249,17 +273,6 @@ function SidebarInner() {
             {!collapsed && <span className="sidebar-item-label">{item.label}</span>}
           </button>
         ))}
-
-        {/* ── Collapse toggle ── */}
-        <button
-          className="sidebar-item"
-          onClick={() => setCollapsed(c => !c)}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          style={{ marginTop: 2 }}
-        >
-          <span className="sidebar-item-icon">{collapsed ? "→" : "←"}</span>
-          {!collapsed && <span className="sidebar-item-label">Collapse</span>}
-        </button>
       </div>
     </aside>
   );

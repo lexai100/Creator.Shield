@@ -1612,3 +1612,14 @@ body {
   border-color: var(--color-lexai-accent);
 }
 
+/* ── Business session delete button (reveal on row hover) ── */
+div:hover > .session-delete-btn,
+div:hover .session-delete-btn {
+  opacity: 0.5 !important;
+}
+div:hover > .session-delete-btn:hover,
+div:hover .session-delete-btn:hover {
+  opacity: 1 !important;
+  color: #f87171 !important;
+}
+

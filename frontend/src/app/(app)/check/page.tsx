@@ -59,6 +59,7 @@ export default function CheckPage() {
 
   // ── Past analyses sidebar ─────────────────────────────────────────────────
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
 
   const refreshHistory = async () => {
     const rows = await getContractResults();
@@ -207,18 +208,44 @@ export default function CheckPage() {
 
       {/* ── History Sidebar ── */}
       <div style={{
-        width: 240, flexShrink: 0,
+        width: historyCollapsed ? 40 : 240, flexShrink: 0,
+        transition: "width 0.25s ease",
         borderRight: "1px solid var(--color-lexai-border)",
         background: "var(--color-lexai-surface)",
         display: "flex", flexDirection: "column",
-        overflowY: "auto",
+        overflowY: historyCollapsed ? "hidden" : "auto",
+        overflowX: "hidden",
       }}>
-        <div style={{ padding: "16px 16px 10px" }}>
-          <h3 style={{ fontWeight: 800, fontSize: "0.82rem", color: "var(--color-lexai-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>
-            🛡️ Past Checks
-          </h3>
+        {/* Toggle button always visible at top */}
+        <div style={{ padding: "10px 6px 6px", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={() => setHistoryCollapsed(c => !c)}
+            title={historyCollapsed ? "Expand Past Checks" : "Collapse Past Checks"}
+            style={{
+              width: 28, height: 28, borderRadius: 7,
+              border: "1px solid var(--color-lexai-border)",
+              background: "transparent",
+              color: "var(--color-lexai-text-muted)",
+              cursor: "pointer", flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+          >
+            <svg width="14" height="14" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1" y="1" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.4"/>
+              <line x1="5" y1="1.5" x2="5" y2="13.5" stroke="currentColor" strokeWidth="1.4"/>
+            </svg>
+          </button>
+          {!historyCollapsed && (
+            <h3 style={{ fontWeight: 800, fontSize: "0.82rem", color: "var(--color-lexai-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>
+              🛡️ Past Checks
+            </h3>
+          )}
         </div>
 
+        {!historyCollapsed && (<>
         {/* New Check button */}
         <div style={{ padding: "4px 10px 8px" }}>
           <button
@@ -273,6 +300,7 @@ export default function CheckPage() {
             })}
           </div>
         )}
+        </>)}
       </div>
 
       {/* ── Main content ── */}

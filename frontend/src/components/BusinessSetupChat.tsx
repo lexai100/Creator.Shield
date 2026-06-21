@@ -170,12 +170,14 @@ function ChecklistCard({
 
 const BASE_STORAGE_KEY = "cs_business_chat_v2";
 
-function getStorageKey(sessionId?: string) {
-  return sessionId ? `${BASE_STORAGE_KEY}_${sessionId}` : BASE_STORAGE_KEY;
+// Always use a specific id as the key — never a generic fallback
+function getStorageKey(id: string) {
+  return `${BASE_STORAGE_KEY}_${id}`;
 }
 
-function loadSavedSession(sessionId?: string) {
-  if (typeof window === "undefined") return null;
+// Only load if we have a real sessionId (i.e. resuming an existing session)
+function loadSavedSession(sessionId: string | undefined) {
+  if (!sessionId || typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(getStorageKey(sessionId));
     return raw ? JSON.parse(raw) : null;
@@ -183,7 +185,7 @@ function loadSavedSession(sessionId?: string) {
 }
 
 function saveSession(
-  sessionId: string | undefined,
+  id: string,
   data: {
     messages: BusinessSetupMessage[];
     checklist: ChecklistItemWithState[];
@@ -192,7 +194,7 @@ function saveSession(
   }
 ) {
   if (typeof window === "undefined") return;
-  try { localStorage.setItem(getStorageKey(sessionId), JSON.stringify(data)); } catch {}
+  try { localStorage.setItem(getStorageKey(id), JSON.stringify(data)); } catch {}
 }
 
 const INITIAL_MESSAGE: BusinessSetupMessage = {
@@ -202,7 +204,16 @@ const INITIAL_MESSAGE: BusinessSetupMessage = {
 };
 
 export default function BusinessSetupChat({ sessionId }: { sessionId?: string }) {
-  const saved = loadSavedSession(sessionId);
+  // Only load saved data when resuming a specific existing session
+  // New sessions (sessionId = undefined) always start fresh
+  const saved = sessionId ? loadSavedSession(sessionId) : null;
+
+  // Each instance gets a stable unique internal ID — never inherits a previous session's ID
+  const [bizSessionId] = useState<string>(() =>
+    saved?.sessionId ?? `biz_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`
+  );
+  // Stable Supabase conversation ID for this instance
+  const [convId] = useState<string>(() => saved?.sessionId ?? newId("biz"));
 
   const [messages, setMessages] = useState<BusinessSetupMessage[]>(
     saved?.messages?.length ? saved.messages : [INITIAL_MESSAGE]
@@ -213,11 +224,8 @@ export default function BusinessSetupChat({ sessionId }: { sessionId?: string })
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(saved?.progress ?? 0);
-  const [bizSessionId] = useState<string>(() => saved?.sessionId ?? `biz_${Date.now()}`);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  // stable conversation id for this session
-  const [convId] = useState(() => saved?.sessionId ?? newId("biz"));
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -228,10 +236,10 @@ export default function BusinessSetupChat({ sessionId }: { sessionId?: string })
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // Persist to localStorage whenever messages/checklist/progress change
+  // Persist to localStorage — always under the unique bizSessionId key
   useEffect(() => {
-    saveSession(sessionId, { messages, checklist, sessionId: bizSessionId, progress });
-  }, [messages, checklist, bizSessionId, progress, sessionId]);
+    saveSession(bizSessionId, { messages, checklist, sessionId: bizSessionId, progress });
+  }, [messages, checklist, bizSessionId, progress]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -243,7 +251,7 @@ export default function BusinessSetupChat({ sessionId }: { sessionId?: string })
   }, [input]);
 
   const handleClearChat = () => {
-    localStorage.removeItem(getStorageKey(sessionId));
+    localStorage.removeItem(getStorageKey(bizSessionId));
     setMessages([INITIAL_MESSAGE]);
     setChecklist([]);
     setProgress(0);
