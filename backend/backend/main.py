@@ -230,14 +230,40 @@ async def _run_adversarial_background(
             callback=on_round,
         )
 
-        # De-tokenise the final document
+        # De-tokenise the final document AND all findings text
+        result_dict = result.model_dump(mode="json")
         if token_map and pii_service:
-            result.final_document = pii_service.detokenize(
-                result.final_document, token_map,
-            )
+            result_dict = pii_service.detokenize_all(result_dict, token_map)
+            # Also update the object's final_document for consistency
+            result.final_document = result_dict.get("final_document", result.final_document)
+
+        # Deduplicate vulnerabilities across rounds (Bug 2 fix):
+        # Same issue can appear in round 1 and round 2 with different severity.
+        # Keep only the highest-severity version of each unique (name, clause) pair.
+        _SEV_ORDER = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+        seen: dict[tuple, dict] = {}
+        for rnd in (result_dict.get("rounds") or []):
+            for v in (rnd.get("vulnerabilities") or []):
+                key = (
+                    (v.get("name") or "").lower().strip()[:40],
+                    (v.get("affected_clause") or "").lower().strip()[:40],
+                )
+                existing = seen.get(key)
+                if not existing or (
+                    _SEV_ORDER.get(v.get("severity", "LOW"), 0)
+                    > _SEV_ORDER.get(existing.get("severity", "LOW"), 0)
+                ):
+                    seen[key] = v
+        # Replace round vulnerabilities with deduplicated list
+        if result_dict.get("rounds"):
+            result_dict["rounds"][0]["vulnerabilities"] = list(seen.values())
+            for rnd in result_dict["rounds"][1:]:
+                rnd["vulnerabilities"] = []
 
         result.task_id = task_id
         result.pii_entities_found = pii_count
+        result_dict["task_id"] = task_id
+        result_dict["pii_entities_found"] = pii_count
 
         record.result = result
         record.status = TaskStatus.COMPLETED
@@ -246,7 +272,7 @@ async def _run_adversarial_background(
         await _broadcast_to_task(task_id, {
             "type": "completed",
             "task_id": task_id,
-            "result": result.model_dump(mode="json"),
+            "result": result_dict,
         })
         logger.info("Task %s completed. Final score: %d", task_id, result.risk_score)
 
@@ -824,11 +850,8 @@ async def analyze_creator_contract(
         )
         negotiation_script = negot_raw.get("email_body", "")
 
-        # De-tokenise
-        if token_map:
-            loop_result.final_document = pii_service.detokenize(loop_result.final_document, token_map)
-
-        # Build CreatorContractAnalysis
+        # De-tokenise ENTIRE result (not just final_document) to prevent
+        # <<TOKEN>> appearing in vulnerability explanations or summaries
         result = CreatorContractAnalysis(
             **loop_result.model_dump(),
             creator_vulnerabilities=creator_vulns,
@@ -837,9 +860,28 @@ async def analyze_creator_contract(
             plain_english_summary=plain_english,
             document_type_detected="creator_contract",
         )
-        result.pii_entities_found = pii_count
+        result_dict = result.model_dump(mode="json")
+        if token_map:
+            result_dict = pii_service.detokenize_all(result_dict, token_map)
 
-        return result.model_dump(mode="json")
+        # Deduplicate findings by (name, clause) — keep highest severity
+        _SEV_ORDER = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+        seen: dict[tuple, dict] = {}
+        for v in (result_dict.get("creator_vulnerabilities") or []):
+            key = (
+                (v.get("name") or "").lower().strip()[:40],
+                (v.get("affected_clause") or "").lower().strip()[:40],
+            )
+            existing = seen.get(key)
+            if not existing or (
+                _SEV_ORDER.get(v.get("severity", "LOW"), 0)
+                > _SEV_ORDER.get(existing.get("severity", "LOW"), 0)
+            ):
+                seen[key] = v
+        result_dict["creator_vulnerabilities"] = list(seen.values())
+
+        result_dict["pii_entities_found"] = pii_count
+        return result_dict
 
     except Exception as exc:
         logger.exception("Creator contract analysis failed: %s", exc)

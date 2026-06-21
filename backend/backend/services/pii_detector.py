@@ -172,14 +172,22 @@ class UPIRecognizer(PatternRecognizer):
 class PIIDetectorService:
     """Detect, anonymize, and de-anonymize PII in legal documents."""
 
-    # Entities we care about (built-in + Indian custom)
+    # Entities to detect and redact.
+    # IMPORTANT: DATE_TIME and LOCATION are intentionally excluded.
+    # Dates and locations are legally significant in contracts (notice periods,
+    # deadlines, jurisdictions) — the LLM MUST see the original values.
+    # Tokenising them causes the model to reason about <<DATE_TIME_N>> tokens
+    # instead of real dates, producing hallucinations and garbage output.
     ENTITIES = [
-        # Built-in Presidio
-        "PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "LOCATION",
-        "DATE_TIME", "CREDIT_CARD", "IBAN_CODE",
-        # Indian custom
+        # Real PII only
+        "PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER",
+        "CREDIT_CARD", "IBAN_CODE",
+        # Indian custom PII
         "IN_AADHAAR", "IN_PAN", "IN_PHONE", "IN_IFSC", "IN_UPI",
     ]
+
+    # Regex to catch any leaked placeholder tokens before output
+    _LEAKED_TOKEN_RE = re.compile(r"<<[A-Z_]+_\d+>>|\{[A-Z_]+(?:_\d+)?\}")
 
     def __init__(self, fernet: Optional[Fernet] = None) -> None:
         self._fernet = fernet
@@ -302,3 +310,35 @@ class PIIDetectorService:
     def get_entity_count(self, text: str, language: str = "en") -> int:
         """Count PII entities found in text."""
         return len(self.detect(text, language))
+
+    def has_leaked_tokens(self, text: str) -> bool:
+        """Return True if any placeholder token survived detokenization (safety guard)."""
+        return bool(self._LEAKED_TOKEN_RE.search(text))
+
+    def detokenize_all(self, obj: object, token_map: dict[str, str]) -> object:
+        """
+        Recursively walk a dict/list/string structure and restore all PII tokens.
+        Use this on the ENTIRE result before returning to the user so that
+        tokens never appear in vulnerability findings, summaries, or any other field.
+        """
+        if isinstance(obj, str):
+            result = obj
+            for token_key, encrypted_or_original in token_map.items():
+                if self._fernet and not encrypted_or_original.startswith("<<"):
+                    try:
+                        original = self._fernet.decrypt(encrypted_or_original.encode()).decode()
+                    except Exception:
+                        original = encrypted_or_original
+                else:
+                    original = encrypted_or_original
+                result = result.replace(token_key, original)
+            # Safety guard — log if any token survived
+            if self.has_leaked_tokens(result):
+                logger.warning("PII token leak detected in output: %s", result[:120])
+            return result
+        elif isinstance(obj, dict):
+            return {k: self.detokenize_all(v, token_map) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self.detokenize_all(item, token_map) for item in obj]
+        else:
+            return obj
